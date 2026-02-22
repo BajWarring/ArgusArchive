@@ -28,7 +28,9 @@ class PdfHandler implements FileHandler {
     try {
       final stream = await adapter.openRead(entry.path);
       final bytesBuilder = BytesBuilder();
-      await for (final chunk in stream) bytesBuilder.add(chunk);
+      await for (final chunk in stream) {
+        bytesBuilder.add(chunk);
+      }
       final bytes = bytesBuilder.takeBytes();
 
       if (context.mounted) Navigator.of(context).pop();
@@ -39,7 +41,6 @@ class PdfHandler implements FileHandler {
             appBar: AppBar(
               title: Text(PathUtils.getName(entry.path), style: const TextStyle(fontSize: 16)),
             ),
-            // SfPdfViewer handles zoom, scroll, and rendering natively
             body: SfPdfViewer.memory(bytes),
           ),
         ));
