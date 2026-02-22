@@ -7,6 +7,8 @@ import '../../features/file_handlers/image_handler.dart';
 import '../../features/file_handlers/text_handler.dart';
 import '../../features/file_handlers/svg_handler.dart';
 import '../../features/file_handlers/pdf_handler.dart';
+import '../../data/db/index_db.dart';
+import '../../services/indexer/index_service.dart';
 
 /// 1. Make the adapter a StateProvider so we can swap it to a ZIP adapter at runtime
 final storageAdapterProvider = StateProvider<StorageAdapter>((ref) {
@@ -37,11 +39,35 @@ final directoryContentsProvider = FutureProvider.autoDispose<List<FileEntry>>((r
 final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
   final registry = FileHandlerRegistry();
   
-  // Handlers registered first have priority.
   registry.register(ImageHandler());
   registry.register(SvgHandler());
   registry.register(PdfHandler());
   registry.register(TextHandler());
   
   return registry;
+});
+
+/// 6. Database Initialization
+final indexDbProvider = FutureProvider<IndexDb>((ref) async {
+  final db = IndexDb();
+  await db.init();
+  return db;
+});
+
+/// 7. Index Service Initialization
+final indexServiceProvider = FutureProvider<IndexService>((ref) async {
+  final adapter = ref.watch(storageAdapterProvider);
+  final db = await ref.watch(indexDbProvider.future);
+  return IndexService(adapter: adapter, indexDb: db);
+});
+
+/// 8. Search State Management
+final searchQueryProvider = StateProvider<String>((ref) => '');
+
+final searchResultsProvider = FutureProvider.autoDispose<List<FileEntry>>((ref) async {
+  final query = ref.watch(searchQueryProvider);
+  if (query.trim().isEmpty) return [];
+  
+  final db = await ref.watch(indexDbProvider.future);
+  return await db.search(query);
 });
