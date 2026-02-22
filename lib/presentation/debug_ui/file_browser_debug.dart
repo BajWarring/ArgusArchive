@@ -5,6 +5,7 @@ import '../../adapters/virtual/zip_archive_adapter.dart';
 import '../../core/enums/file_type.dart';
 import '../../core/utils/path_utils.dart';
 import 'providers.dart';
+import 'search_debug.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({Key? key}) : super(key: key);
@@ -19,6 +20,46 @@ class FileBrowserDebug extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Debug File Browser'),
+        actions: [
+          // Button to start background indexing for the current directory
+          IconButton(
+            icon: const Icon(Icons.storage),
+            tooltip: 'Build Search Index',
+            onPressed: () async {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Indexing started in background...')),
+              );
+              try {
+                final indexer = await ref.read(indexServiceProvider.future);
+                // Start crawling from the current directory
+                await indexer.start(rootPath: currentPath, rebuild: true);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Indexing complete!')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Indexing failed: $e')),
+                  );
+                }
+              }
+            },
+          ),
+          // Button to open the Search UI
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Search Files',
+            onPressed: () {
+              // Reset the query before opening
+              ref.read(searchQueryProvider.notifier).state = '';
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const SearchDebugScreen()),
+              );
+            },
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(40),
           child: Padding(
@@ -97,23 +138,19 @@ class FileBrowserDebug extends ConsumerWidget {
                   ),
                   onTap: () {
                     if (file.isDirectory) {
-                      // 1. Enter directory
                       ref.read(currentPathProvider.notifier).state = file.path;
                     } 
                     else if (file.path.toLowerCase().endsWith('.zip') && currentAdapter is! ZipArchiveAdapter) {
-                      // 2. Enter ZIP as a virtual directory
                       ref.read(realParentPathProvider.notifier).state = currentPath;
                       ref.read(storageAdapterProvider.notifier).state = ZipArchiveAdapter(zipFilePath: file.path);
                       ref.read(currentPathProvider.notifier).state = '/'; 
                     } 
                     else {
-                      // 3. Normal file: Ask the registry if it can handle it
                       final handler = registry.handlerFor(file);
                       
                       if (handler != null) {
                         handler.open(context, file, currentAdapter);
                       } else {
-                        // Fallback if no handler is registered for this file type
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('No handler found for: ${PathUtils.getName(file.path)}')),
                         );
