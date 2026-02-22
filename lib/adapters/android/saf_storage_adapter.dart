@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io'; // Added to provide the FileMode class
 import 'dart:typed_data';
 import 'package:shared_storage/shared_storage.dart' as saf;
 import '../../core/interfaces/storage_adapter.dart';
@@ -15,11 +16,9 @@ class SafStorageAdapter implements StorageAdapter {
 
   @override
   Future<List<FileEntry>> list(String path, {ListOptions options = const ListOptions()}) async {
-    // If path is root '/', use the rootUri. Otherwise, parse the saved URI.
     final targetUri = path == '/' || path.isEmpty ? rootUri : Uri.parse(path);
     final List<FileEntry> entries = [];
     
-    // shared_storage requires us to explicitly state which columns we want to read
     final stream = saf.listFiles(targetUri, columns: saf.DocumentFileColumn.values);
     
     await for (final file in stream) {
@@ -48,7 +47,6 @@ class SafStorageAdapter implements StorageAdapter {
   Future<StreamSink<List<int>>> openWrite(String path, {bool append = false}) async {
     Uri targetUri;
     
-    // Intercept our custom virtual creation paths from the TransferWorker
     if (path.startsWith('saf_create|')) {
        final parts = path.substring(11).split('|');
        final parentUri = Uri.parse(parts[0]);
@@ -74,11 +72,11 @@ class SafStorageAdapter implements StorageAdapter {
       builder.add(chunk);
     }, onDone: () async {
       final bytes = builder.takeBytes();
-      // shared_storage uses standard string modes ("w" for write, "wa" for append)
       await saf.writeToFileAsBytes(
         targetUri, 
         bytes: bytes, 
-        mode: append ? "wa" : "w"
+        // Using dart:io FileMode natively 
+        mode: append ? FileMode.append : FileMode.write
       );
     });
     
@@ -96,13 +94,11 @@ class SafStorageAdapter implements StorageAdapter {
   Future<void> move(String src, String dst) async {
     Uri? actualSrcUri;
     
-    // Resolve the actual URI if it was a virtual path created by openWrite
     if (src.startsWith('saf_create|')) {
        final parts = src.substring(11).split('|');
        final parentUri = Uri.parse(parts[0]);
        final fileName = parts[1];
        
-       // Traverse to find the exact URI of the newly created file
        final stream = saf.listFiles(parentUri, columns: saf.DocumentFileColumn.values);
        saf.DocumentFile? parentDoc;
        
@@ -136,15 +132,12 @@ class SafStorageAdapter implements StorageAdapter {
 
   @override
   Future<Metadata> stat(String path) async {
-    // Due to the opaque nature of SAF URIs, retrieving isolated metadata without a parent context 
-    // is highly restricted. We provide a default fallback so indexers don't crash.
-    // Real metadata is populated safely during the list() command.
     return Metadata(size: 0, modifiedAt: DateTime.now());
   }
 
   @override
   Stream<StorageEvent> watch(String path) {
-    return const Stream.empty(); // SAF does not support live directory watching natively
+    return const Stream.empty(); 
   }
 
   FileEntry _mapToEntry(saf.DocumentFile file) {
