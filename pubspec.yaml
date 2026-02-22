@@ -1,5 +1,5 @@
-name: argusarchive
-description: "A new Flutter project."
+name: ArgusArchive
+description: "A new Flutter project for File Manager."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -31,10 +31,30 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # State Management & Dependency Injection
+  flutter_riverpod: ^2.5.1
+  
+  # Core Utilities
+  path: ^1.9.0
+  
+  # Archive & Compression (ZIP handling)
+  archive: ^3.3.2
+  
+  # Database & File System Indexing
+  sqflite: ^2.3.0
+  path_provider: ^2.1.2
+  
+  # File Handlers (Previewers)
+  flutter_svg: ^2.0.10
+  syncfusion_flutter_pdfviewer: ^24.1.41
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.6
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+    
+  # For pure Dart unit tests (like the TransferWorker tests)
+  test: ^1.24.0
+
 
 dev_dependencies:
   flutter_test:
