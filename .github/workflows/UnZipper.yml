@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   unzip-and-replace:
@@ -20,26 +19,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check PAT secret exists
+      - name: Verify PAT exists
         run: |
           if [ -z "${{ secrets.PAT_TOKEN }}" ]; then
-            echo "❌ PAT_TOKEN secret is missing or empty"
+            echo "PAT_TOKEN is missing"
             exit 1
-          else
-            echo "✅ PAT_TOKEN detected"
           fi
 
       - name: Validate zip file exists
         run: |
           if [ ! -f "${{ github.event.inputs.zip_path }}" ]; then
-            echo "❌ Zip file not found at path: ${{ github.event.inputs.zip_path }}"
+            echo "Zip file not found: ${{ github.event.inputs.zip_path }}"
             exit 1
           fi
 
-      - name: Show zip contents
-        run: |
-          echo "📦 Contents preview:"
-          unzip -l "${{ github.event.inputs.zip_path }}"
+      - name: Preview zip contents
+        run: unzip -l "${{ github.event.inputs.zip_path }}"
 
       - name: Get directory of zip
         id: getdir
@@ -47,24 +42,21 @@ jobs:
           DIR=$(dirname "${{ github.event.inputs.zip_path }}")
           echo "dir=$DIR" >> $GITHUB_OUTPUT
 
-      - name: Extract zip in same directory
+      - name: Extract zip
         run: |
-          echo "📂 Extracting into: ${{ steps.getdir.outputs.dir }}"
           unzip -o "${{ github.event.inputs.zip_path }}" -d "${{ steps.getdir.outputs.dir }}"
 
-      - name: Remove zip file
-        run: |
-          rm "${{ github.event.inputs.zip_path }}"
-          echo "🧹 Zip removed"
+      - name: Remove zip
+        run: rm "${{ github.event.inputs.zip_path }}"
 
       - name: Commit changes
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add -A
-          git commit -m "Extract ${{ github.event.inputs.zip_path }} and overwrite existing files" || echo "No changes to commit"
+          git commit -m "Extract ${{ github.event.inputs.zip_path }}" || echo "No changes"
 
-      - name: Push using PAT
+      - name: Push using Classic PAT
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
