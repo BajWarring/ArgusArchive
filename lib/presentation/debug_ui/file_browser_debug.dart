@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../adapters/local/local_storage_adapter.dart';
 import '../../adapters/virtual/zip_archive_adapter.dart';
 import '../../core/enums/file_type.dart';
+import '../../core/models/file_entry.dart';
 import '../../core/utils/path_utils.dart';
+import '../../services/transfer/transfer_task.dart';
 import 'providers.dart';
 import 'search_debug.dart';
+import 'transfer_debug.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({Key? key}) : super(key: key);
@@ -21,7 +24,17 @@ class FileBrowserDebug extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Debug File Browser'),
         actions: [
-          // Button to start background indexing for the current directory
+          // 1. Transfer Queue UI Button
+          IconButton(
+            icon: const Icon(Icons.swap_vert),
+            tooltip: 'Background Tasks',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const TransferDebugScreen()),
+              );
+            },
+          ),
+          // 2. Build Index Button
           IconButton(
             icon: const Icon(Icons.storage),
             tooltip: 'Build Search Index',
@@ -31,7 +44,6 @@ class FileBrowserDebug extends ConsumerWidget {
               );
               try {
                 final indexer = await ref.read(indexServiceProvider.future);
-                // Start crawling from the current directory
                 await indexer.start(rootPath: currentPath, rebuild: true);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -47,12 +59,11 @@ class FileBrowserDebug extends ConsumerWidget {
               }
             },
           ),
-          // Button to open the Search UI
+          // 3. Search Button
           IconButton(
             icon: const Icon(Icons.search),
             tooltip: 'Search Files',
             onPressed: () {
-              // Reset the query before opening
               ref.read(searchQueryProvider.notifier).state = '';
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (context) => const SearchDebugScreen()),
@@ -147,7 +158,6 @@ class FileBrowserDebug extends ConsumerWidget {
                     } 
                     else {
                       final handler = registry.handlerFor(file);
-                      
                       if (handler != null) {
                         handler.open(context, file, currentAdapter);
                       } else {
@@ -156,6 +166,10 @@ class FileBrowserDebug extends ConsumerWidget {
                         );
                       }
                     }
+                  },
+                  onLongPress: () {
+                    // Show operations menu on long press
+                    _showFileOperationsMenu(context, ref, file);
                   },
                 );
               },
@@ -175,5 +189,82 @@ class FileBrowserDebug extends ConsumerWidget {
       case FileType.archive: return Icons.archive;
       default: return Icons.insert_drive_file;
     }
+  }
+
+  void _showFileOperationsMenu(BuildContext context, WidgetRef ref, FileEntry file) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.copy, color: Colors.blue),
+                title: const Text('Copy File'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _enqueueTask(ref, file, TransferOperation.copy, '${file.path}_copy');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.compress, color: Colors.orange),
+                title: const Text('Compress to ZIP'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _enqueueTask(ref, file, TransferOperation.compress, '${file.path}.zip');
+                },
+              ),
+              if (file.path.toLowerCase().endsWith('.zip'))
+                ListTile(
+                  leading: const Icon(Icons.folder_zip, color: Colors.green),
+                  title: const Text('Extract ZIP'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    // Extract to a folder without the .zip extension
+                    final destPath = file.path.substring(0, file.path.length - 4);
+                    _enqueueTask(ref, file, TransferOperation.extract, destPath);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Delete File'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _enqueueTask(ref, file, TransferOperation.delete, '');
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _enqueueTask(WidgetRef ref, FileEntry file, TransferOperation operation, String destPath) {
+    final queue = ref.read(transferQueueProvider);
+    final currentAdapter = ref.read(storageAdapterProvider);
+    
+    // Virtual zip adapters are read-only, so we prevent enqueueing tasks if inside a zip
+    if (currentAdapter is ZipArchiveAdapter) {
+      ScaffoldMessenger.of(ref.context).showSnackBar(
+        const SnackBar(content: Text('Operations inside virtual ZIPs are not supported yet.')),
+      );
+      return;
+    }
+
+    final task = TransferTask(
+      id: DateTime.now().millisecondsSinceEpoch.toString(), // Unique ID
+      sourcePath: file.path,
+      destPath: destPath,
+      totalBytes: file.size,
+      operation: operation,
+    );
+
+    // Enqueue the background task using the current adapter for both source and destination
+    queue.enqueue(task, currentAdapter, currentAdapter);
+
+    ScaffoldMessenger.of(ref.context).showSnackBar(
+      SnackBar(content: Text('${operation.name.toUpperCase()} queued. Check Background Tasks.')),
+    );
   }
 }
