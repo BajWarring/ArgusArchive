@@ -43,6 +43,9 @@ dependencies:
   # Database & File System Indexing
   sqflite: ^2.3.0
   path_provider: ^2.1.2
+
+  # SAF Android Framework
+  shared_storage: ^0.6.2
   
   # File Handlers (Previewers)
   flutter_svg: ^2.0.10
