@@ -1,0 +1,44 @@
+name: 1. Setup Flutter App
+on:
+  workflow_dispatch: # Manual trigger only
+
+permissions:
+  contents: write
+
+jobs:
+  init-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Create Flutter App
+        run: |
+          # Create app with specific package (com.app.argusarchive)
+          # Note: Project name in dart cannot have dots, so we use 'argus_archive' internally
+          flutter create --org com.app --project-name argusarchive .
+          
+          # Remove the default test file to avoid build errors in empty setup
+          rm -rf test/widget_test.dart
+
+      - name: Configure App Name (Argus Archive)
+        run: |
+          # Use sed to replace the label in AndroidManifest to "Argus Archive"
+          sed -i 's/android:label="argus_archive"/android:label="Argus Archive"/g' android/app/src/main/AndroidManifest.xml
+          
+          # Update the description in pubspec.yaml
+          sed -i 's/description: A new Flutter project./description: Sage Tools - Personal Accounting/g' pubspec.yaml
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add .
+          git commit -m "Initialize Argus (com.app.argusarchive)"
+          git push
