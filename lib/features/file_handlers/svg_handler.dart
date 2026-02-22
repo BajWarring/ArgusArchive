@@ -29,7 +29,9 @@ class SvgHandler implements FileHandler {
     try {
       final stream = await adapter.openRead(entry.path);
       final bytesBuilder = BytesBuilder();
-      await for (final chunk in stream) bytesBuilder.add(chunk);
+      await for (final chunk in stream) {
+        bytesBuilder.add(chunk);
+      }
       final bytes = bytesBuilder.takeBytes();
 
       if (context.mounted) Navigator.of(context).pop();
