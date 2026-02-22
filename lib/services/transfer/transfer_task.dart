@@ -1,7 +1,10 @@
 /// Represents the current state of a transfer task.
 enum TransferStatus { pending, inProgress, paused, completed, failed, cancelled }
 
-/// Immutable domain object representing a single file transfer operation.
+/// The type of operation this task represents.
+enum TransferOperation { copy, move, delete, compress, extract }
+
+/// Immutable domain object representing a single background operation.
 class TransferTask {
   final String id;
   final String sourcePath;
@@ -9,21 +12,21 @@ class TransferTask {
   final int totalBytes;
   final int transferredBytes;
   final TransferStatus status;
+  final TransferOperation operation;
   final int retryCount;
   final int maxRetries;
-  final bool useChecksum;
   final String? errorMessage;
 
   const TransferTask({
     required this.id,
     required this.sourcePath,
     required this.destPath,
-    required this.totalBytes,
+    this.totalBytes = 0,
     this.transferredBytes = 0,
     this.status = TransferStatus.pending,
+    this.operation = TransferOperation.copy,
     this.retryCount = 0,
     this.maxRetries = 3,
-    this.useChecksum = true,
     this.errorMessage,
   });
 
@@ -43,9 +46,9 @@ class TransferTask {
       totalBytes: totalBytes,
       transferredBytes: transferredBytes ?? this.transferredBytes,
       status: status ?? this.status,
+      operation: operation,
       retryCount: retryCount ?? this.retryCount,
       maxRetries: maxRetries,
-      useChecksum: useChecksum,
       errorMessage: errorMessage ?? this.errorMessage,
     );
   }
