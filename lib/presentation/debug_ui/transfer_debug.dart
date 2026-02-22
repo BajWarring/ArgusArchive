@@ -5,7 +5,7 @@ import '../../services/transfer/transfer_task.dart';
 import 'providers.dart';
 
 class TransferDebugScreen extends ConsumerWidget {
-  const TransferDebugScreen({Key? key}) : super(key: key);
+  const TransferDebugScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,7 +97,7 @@ class TransferDebugScreen extends ConsumerWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(12)),
       child: Text(status.name, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
     );
   }
