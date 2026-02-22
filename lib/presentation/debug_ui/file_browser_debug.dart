@@ -14,6 +14,7 @@ class FileBrowserDebug extends ConsumerWidget {
     final currentPath = ref.watch(currentPathProvider);
     final contentsAsyncValue = ref.watch(directoryContentsProvider);
     final currentAdapter = ref.watch(storageAdapterProvider);
+    final registry = ref.watch(fileHandlerRegistryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -96,17 +97,27 @@ class FileBrowserDebug extends ConsumerWidget {
                   ),
                   onTap: () {
                     if (file.isDirectory) {
+                      // 1. Enter directory
                       ref.read(currentPathProvider.notifier).state = file.path;
                     } 
                     else if (file.path.toLowerCase().endsWith('.zip') && currentAdapter is! ZipArchiveAdapter) {
+                      // 2. Enter ZIP as a virtual directory
                       ref.read(realParentPathProvider.notifier).state = currentPath;
                       ref.read(storageAdapterProvider.notifier).state = ZipArchiveAdapter(zipFilePath: file.path);
                       ref.read(currentPathProvider.notifier).state = '/'; 
                     } 
                     else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Tapped file: ${PathUtils.getName(file.path)}')),
-                      );
+                      // 3. Normal file: Ask the registry if it can handle it
+                      final handler = registry.handlerFor(file);
+                      
+                      if (handler != null) {
+                        handler.open(context, file, currentAdapter);
+                      } else {
+                        // Fallback if no handler is registered for this file type
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('No handler found for: ${PathUtils.getName(file.path)}')),
+                        );
+                      }
                     }
                   },
                 );
