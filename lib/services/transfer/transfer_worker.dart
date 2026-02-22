@@ -90,10 +90,11 @@ class TransferWorker {
   }
 
   Future<void> _handleCompress(TransferTask task) async {
-    // Basic in-memory zip compression for V1
     final stream = await sourceAdapter.openRead(task.sourcePath);
     final builder = BytesBuilder();
-    await for (final chunk in stream) builder.add(chunk);
+    await for (final chunk in stream) {
+      builder.add(chunk);
+    }
     
     final archive = Archive();
     final fileName = PathUtils.getName(task.sourcePath);
@@ -110,10 +111,11 @@ class TransferWorker {
   }
 
   Future<void> _handleExtract(TransferTask task) async {
-    // Basic in-memory zip extraction for V1
     final stream = await sourceAdapter.openRead(task.sourcePath);
     final builder = BytesBuilder();
-    await for (final chunk in stream) builder.add(chunk);
+    await for (final chunk in stream) {
+      builder.add(chunk);
+    }
 
     final archive = ZipDecoder().decodeBytes(builder.toBytes());
     
