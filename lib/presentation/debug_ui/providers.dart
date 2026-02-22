@@ -9,6 +9,8 @@ import '../../features/file_handlers/svg_handler.dart';
 import '../../features/file_handlers/pdf_handler.dart';
 import '../../data/db/index_db.dart';
 import '../../services/indexer/index_service.dart';
+import '../../services/transfer/transfer_queue.dart';
+import '../../services/transfer/transfer_task.dart';
 
 /// 1. Make the adapter a StateProvider so we can swap it to a ZIP adapter at runtime
 final storageAdapterProvider = StateProvider<StorageAdapter>((ref) {
@@ -71,3 +73,22 @@ final searchResultsProvider = FutureProvider.autoDispose<List<FileEntry>>((ref) 
   final db = await ref.watch(indexDbProvider.future);
   return await db.search(query);
 });
+
+
+/// 9. Global Transfer Queue Singleton
+final transferQueueProvider = Provider<TransferQueue>((ref) {
+  final queue = TransferQueue(maxConcurrent: 2);
+  
+  ref.onDispose(() {
+    queue.dispose();
+  });
+  
+  return queue;
+});
+
+/// 10. Live stream of queue tasks for the UI
+final queueTasksStreamProvider = StreamProvider<List<TransferTask>>((ref) {
+  final queue = ref.watch(transferQueueProvider);
+  return queue.queueStream;
+});
+
