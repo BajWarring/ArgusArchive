@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../adapters/local/local_storage_adapter.dart';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/models/file_entry.dart';
+import '../../features/file_handlers/file_handler_registry.dart';
+import '../../features/file_handlers/image_handler.dart';
 
 /// 1. Make the adapter a StateProvider so we can swap it to a ZIP adapter at runtime
 final storageAdapterProvider = StateProvider<StorageAdapter>((ref) {
@@ -26,4 +28,15 @@ final directoryContentsProvider = FutureProvider.autoDispose<List<FileEntry>>((r
   } catch (e) {
     throw Exception('Failed to read directory: $e');
   }
+});
+
+/// 5. Global registry for handling different file types when tapped
+final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
+  final registry = FileHandlerRegistry();
+  
+  // Register our handlers here. The first one that returns true for 'canHandle' wins.
+  registry.register(ImageHandler());
+  // You can add DocumentHandler(), AudioHandler(), etc., here later.
+  
+  return registry;
 });
