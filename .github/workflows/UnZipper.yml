@@ -20,6 +20,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check PAT secret exists
+        run: |
+          if [ -z "${{ secrets.PAT_TOKEN }}" ]; then
+            echo "❌ PAT_TOKEN secret is missing or empty"
+            exit 1
+          else
+            echo "✅ PAT_TOKEN detected"
+          fi
+
       - name: Validate zip file exists
         run: |
           if [ ! -f "${{ github.event.inputs.zip_path }}" ]; then
@@ -27,12 +36,12 @@ jobs:
             exit 1
           fi
 
-      - name: Show zip contents (safety preview)
+      - name: Show zip contents
         run: |
-          echo "📦 Contents of zip:"
+          echo "📦 Contents preview:"
           unzip -l "${{ github.event.inputs.zip_path }}"
 
-      - name: Get directory of zip file
+      - name: Get directory of zip
         id: getdir
         run: |
           DIR=$(dirname "${{ github.event.inputs.zip_path }}")
@@ -56,5 +65,8 @@ jobs:
           git commit -m "Extract ${{ github.event.inputs.zip_path }} and overwrite existing files" || echo "No changes to commit"
 
       - name: Push using PAT
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
+          git push origin HEAD:main
