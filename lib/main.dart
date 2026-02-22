@@ -4,7 +4,6 @@ import 'presentation/debug_ui/file_browser_debug.dart';
 
 void main() {
   runApp(
-    // Wrap the app in ProviderScope for Riverpod
     const ProviderScope(
       child: DecentralFileManagerApp(),
     ),
@@ -12,13 +11,13 @@ void main() {
 }
 
 class DecentralFileManagerApp extends StatelessWidget {
-  const DecentralFileManagerApp({Key? key}) : super(key: key);
+  const DecentralFileManagerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Decentral File Manager',
-      theme: ThemeData.dark(), // Fits the "debug" vibe perfectly
+      theme: ThemeData.dark(),
       home: const FileBrowserDebug(),
     );
   }
