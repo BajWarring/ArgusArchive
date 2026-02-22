@@ -1,5 +1,7 @@
 name: 3. Unzip Any Zip & Rewrite
-
+permissions:
+  contents: write
+  actions: write
 on:
   workflow_dispatch:
     inputs:
