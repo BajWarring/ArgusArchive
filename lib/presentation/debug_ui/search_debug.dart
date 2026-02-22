@@ -5,7 +5,7 @@ import '../../core/utils/path_utils.dart';
 import 'providers.dart';
 
 class SearchDebugScreen extends ConsumerWidget {
-  const SearchDebugScreen({Key? key}) : super(key: key);
+  const SearchDebugScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -24,7 +24,6 @@ class SearchDebugScreen extends ConsumerWidget {
           ),
           style: const TextStyle(color: Colors.white, fontSize: 18),
           onChanged: (value) {
-            // Update the Riverpod state, which automatically triggers a new DB query
             ref.read(searchQueryProvider.notifier).state = value;
           },
         ),
@@ -62,7 +61,6 @@ class SearchDebugScreen extends ConsumerWidget {
                 title: Text(PathUtils.getName(file.path)),
                 subtitle: Text(file.path, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 onTap: () {
-                  // If it's a file, try to open it with our registered handlers
                   if (!file.isDirectory) {
                     final handler = registry.handlerFor(file);
                     if (handler != null) {
@@ -73,7 +71,6 @@ class SearchDebugScreen extends ConsumerWidget {
                       );
                     }
                   } else {
-                    // Navigate to the folder in the main browser and pop search
                     ref.read(currentPathProvider.notifier).state = file.path;
                     Navigator.of(context).pop();
                   }
