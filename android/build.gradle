@@ -27,21 +27,20 @@ allprojects {
             jvmTarget = "1.8"
         }
     }
-    
-    // THIS FIXES THE 'lStar' ERROR FOR GOOD
-    configurations.all {
-        resolutionStrategy {
-            force 'androidx.core:core:1.6.0'
-            force 'androidx.core:core-ktx:1.6.0'
-        }
-    }
 }
 
-subprojects { project ->
-    project.plugins.withId("com.android.library") {
-        project.android {
-            if (namespace == null) {
-                namespace project.group
+// This hook safely waits until all plugins are loaded, then forces the required fixes
+gradle.projectsEvaluated {
+    subprojects { project ->
+        if (project.hasProperty('android')) {
+            project.android {
+                // Fixes the 'lStar' error for older plugins like shared_storage
+                compileSdkVersion 35
+                
+                // Fixes the AGP 8 namespace requirement
+                if (namespace == null) {
+                    namespace project.group
+                }
             }
         }
     }
