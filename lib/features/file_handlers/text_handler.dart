@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/interfaces/storage_adapter.dart';
@@ -55,7 +56,6 @@ class TextHandler implements FileHandler {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Line numbering column
                         Container(
                           width: 50,
                           alignment: Alignment.topRight,
@@ -65,7 +65,6 @@ class TextHandler implements FileHandler {
                             style: const TextStyle(color: Colors.grey, fontSize: 13, fontFamily: 'monospace'),
                           ),
                         ),
-                        // Text content
                         Expanded(
                           child: Text(
                             lines[index],
