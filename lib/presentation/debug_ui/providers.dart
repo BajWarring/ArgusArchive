@@ -3,18 +3,20 @@ import '../../adapters/local/local_storage_adapter.dart';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/models/file_entry.dart';
 
-/// Provides the default storage adapter (Local for now, could be SAF on Android later)
-final storageAdapterProvider = Provider<StorageAdapter>((ref) {
+/// 1. Make the adapter a StateProvider so we can swap it to a ZIP adapter at runtime
+final storageAdapterProvider = StateProvider<StorageAdapter>((ref) {
   return LocalStorageAdapter();
 });
 
-/// Manages the current directory path being viewed
+/// 2. Track the "real" parent path so we know where to go back to when exiting a ZIP
+final realParentPathProvider = StateProvider<String?>((ref) => null);
+
+/// 3. Current path inside whatever adapter is active
 final currentPathProvider = StateProvider<String>((ref) {
-  // Default to a safe starting directory for testing
-  return '/storage/emulated/0/Download'; // Standard Android path for testing
+  return '/storage/emulated/0/Download'; // Default Android path for testing
 });
 
-/// Asynchronously loads the directory contents whenever the path changes
+/// 4. Asynchronously loads the directory contents
 final directoryContentsProvider = FutureProvider.autoDispose<List<FileEntry>>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final path = ref.watch(currentPathProvider);
@@ -22,7 +24,6 @@ final directoryContentsProvider = FutureProvider.autoDispose<List<FileEntry>>((r
   try {
     return await adapter.list(path);
   } catch (e) {
-    // If permission denied or not found, return an empty list or throw
     throw Exception('Failed to read directory: $e');
   }
 });
