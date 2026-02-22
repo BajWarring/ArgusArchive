@@ -84,7 +84,7 @@ class FileBrowserDebug extends ConsumerWidget {
       ),
       body: PopScope(
         canPop: false,
-        onPopInvoked: (didPop) {
+        onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
           
           if (currentAdapter is ZipArchiveAdapter) {
