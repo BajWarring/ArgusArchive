@@ -11,7 +11,7 @@ import 'search_debug.dart';
 import 'transfer_debug.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
-  const FileBrowserDebug({Key? key}) : super(key: key);
+  const FileBrowserDebug({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -24,7 +24,6 @@ class FileBrowserDebug extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Debug File Browser'),
         actions: [
-          // 1. Transfer Queue UI Button
           IconButton(
             icon: const Icon(Icons.swap_vert),
             tooltip: 'Background Tasks',
@@ -34,7 +33,6 @@ class FileBrowserDebug extends ConsumerWidget {
               );
             },
           ),
-          // 2. Build Index Button
           IconButton(
             icon: const Icon(Icons.storage),
             tooltip: 'Build Search Index',
@@ -59,7 +57,6 @@ class FileBrowserDebug extends ConsumerWidget {
               }
             },
           ),
-          // 3. Search Button
           IconButton(
             icon: const Icon(Icons.search),
             tooltip: 'Search Files',
@@ -85,8 +82,11 @@ class FileBrowserDebug extends ConsumerWidget {
           ),
         ),
       ),
-      body: WillPopScope(
-        onWillPop: () async {
+      body: PopScope(
+        canPop: false,
+        onPopInvoked: (didPop) {
+          if (didPop) return;
+          
           if (currentAdapter is ZipArchiveAdapter) {
             if (currentPath == '/' || currentPath.isEmpty) {
               final parentPath = ref.read(realParentPathProvider);
@@ -94,21 +94,21 @@ class FileBrowserDebug extends ConsumerWidget {
                 ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
                 ref.read(currentPathProvider.notifier).state = parentPath;
                 ref.read(realParentPathProvider.notifier).state = null;
-                return false;
+              } else {
+                Navigator.of(context).pop();
               }
             } else {
               final parent = PathUtils.join(currentPath, '..');
               ref.read(currentPathProvider.notifier).state = parent == '.' ? '/' : parent;
-              return false;
             }
           } else {
             if (currentPath.split('/').length > 2) {
                final parent = PathUtils.join(currentPath, '..');
                ref.read(currentPathProvider.notifier).state = parent;
-               return false;
+            } else {
+               Navigator.of(context).pop();
             }
           }
-          return true;
         },
         child: contentsAsyncValue.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -123,9 +123,7 @@ class FileBrowserDebug extends ConsumerWidget {
             ),
           ),
           data: (files) {
-            if (files.isEmpty) {
-              return const Center(child: Text('Empty Directory'));
-            }
+            if (files.isEmpty) return const Center(child: Text('Empty Directory'));
 
             files.sort((a, b) {
               if (a.isDirectory && !b.isDirectory) return -1;
@@ -168,7 +166,6 @@ class FileBrowserDebug extends ConsumerWidget {
                     }
                   },
                   onLongPress: () {
-                    // Show operations menu on long press
                     _showFileOperationsMenu(context, ref, file);
                   },
                 );
@@ -220,7 +217,6 @@ class FileBrowserDebug extends ConsumerWidget {
                   title: const Text('Extract ZIP'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    // Extract to a folder without the .zip extension
                     final destPath = file.path.substring(0, file.path.length - 4);
                     _enqueueTask(ref, file, TransferOperation.extract, destPath);
                   },
@@ -244,7 +240,6 @@ class FileBrowserDebug extends ConsumerWidget {
     final queue = ref.read(transferQueueProvider);
     final currentAdapter = ref.read(storageAdapterProvider);
     
-    // Virtual zip adapters are read-only, so we prevent enqueueing tasks if inside a zip
     if (currentAdapter is ZipArchiveAdapter) {
       ScaffoldMessenger.of(ref.context).showSnackBar(
         const SnackBar(content: Text('Operations inside virtual ZIPs are not supported yet.')),
@@ -253,14 +248,13 @@ class FileBrowserDebug extends ConsumerWidget {
     }
 
     final task = TransferTask(
-      id: DateTime.now().millisecondsSinceEpoch.toString(), // Unique ID
+      id: DateTime.now().millisecondsSinceEpoch.toString(), 
       sourcePath: file.path,
       destPath: destPath,
       totalBytes: file.size,
       operation: operation,
     );
 
-    // Enqueue the background task using the current adapter for both source and destination
     queue.enqueue(task, currentAdapter, currentAdapter);
 
     ScaffoldMessenger.of(ref.context).showSnackBar(
