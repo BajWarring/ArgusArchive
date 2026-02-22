@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_storage/shared_storage.dart' as saf_plugin;
 import '../../adapters/local/local_storage_adapter.dart';
+import '../../adapters/android/saf_storage_adapter.dart';
 import '../../adapters/virtual/zip_archive_adapter.dart';
 import '../../core/enums/file_type.dart';
 import '../../core/models/file_entry.dart';
@@ -26,45 +28,26 @@ class FileBrowserDebug extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.swap_vert),
-            tooltip: 'Background Tasks',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const TransferDebugScreen()),
-              );
-            },
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransferDebugScreen())),
           ),
           IconButton(
             icon: const Icon(Icons.storage),
-            tooltip: 'Build Search Index',
             onPressed: () async {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Indexing started in background...')),
-              );
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started...')));
               try {
                 final indexer = await ref.read(indexServiceProvider.future);
                 await indexer.start(rootPath: currentPath, rebuild: true);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Indexing complete!')),
-                  );
-                }
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing complete!')));
               } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Indexing failed: $e')),
-                  );
-                }
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Indexing failed: $e')));
               }
             },
           ),
           IconButton(
             icon: const Icon(Icons.search),
-            tooltip: 'Search Files',
             onPressed: () {
               ref.read(searchQueryProvider.notifier).state = '';
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const SearchDebugScreen()),
-              );
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchDebugScreen()));
             },
           ),
         ],
@@ -73,10 +56,8 @@ class FileBrowserDebug extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.all(8.0),
             child: Text(
-              currentAdapter is ZipArchiveAdapter 
-                  ? 'ZIP: ${PathUtils.getName(currentAdapter.zipFilePath)} -> $currentPath'
-                  : currentPath,
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
+              currentAdapter is SafStorageAdapter ? 'SAF URI: $currentPath' : currentPath,
+              style: const TextStyle(fontSize: 10, color: Colors.white70),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -88,19 +69,19 @@ class FileBrowserDebug extends ConsumerWidget {
           if (didPop) return;
           
           if (currentAdapter is ZipArchiveAdapter) {
-            if (currentPath == '/' || currentPath.isEmpty) {
-              final parentPath = ref.read(realParentPathProvider);
-              if (parentPath != null) {
-                ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
-                ref.read(currentPathProvider.notifier).state = parentPath;
-                ref.read(realParentPathProvider.notifier).state = null;
-              } else {
-                Navigator.of(context).pop();
-              }
+            final parentPath = ref.read(realParentPathProvider);
+            if (parentPath != null) {
+              ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
+              ref.read(currentPathProvider.notifier).state = parentPath;
+              ref.read(realParentPathProvider.notifier).state = null;
             } else {
-              final parent = PathUtils.join(currentPath, '..');
-              ref.read(currentPathProvider.notifier).state = parent == '.' ? '/' : parent;
+              Navigator.of(context).pop();
             }
+          } else if (currentAdapter is SafStorageAdapter) {
+             // In SAF, back navigation requires parsing parent URIs which is complex. 
+             // For debug UI, we'll just reset back to LocalStorage.
+             ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
+             ref.read(currentPathProvider.notifier).state = '/storage/emulated/0/Download';
           } else {
             if (currentPath.split('/').length > 2) {
                final parent = PathUtils.join(currentPath, '..');
@@ -112,67 +93,55 @@ class FileBrowserDebug extends ConsumerWidget {
         },
         child: contentsAsyncValue.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                'Error: $err\n\n(Did you grant storage permissions?)', 
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
+          error: (err, stack) => Center(child: Text('Error: $err\n\n(Did you grant permissions?)', textAlign: TextAlign.center)),
           data: (files) {
             if (files.isEmpty) return const Center(child: Text('Empty Directory'));
-
-            files.sort((a, b) {
-              if (a.isDirectory && !b.isDirectory) return -1;
-              if (!a.isDirectory && b.isDirectory) return 1;
-              return a.path.compareTo(b.path);
-            });
+            files.sort((a, b) => a.isDirectory == b.isDirectory ? a.path.compareTo(b.path) : (a.isDirectory ? -1 : 1));
 
             return ListView.builder(
               itemCount: files.length,
               itemBuilder: (context, index) {
                 final file = files[index];
-                
                 return ListTile(
                   leading: Icon(
                     file.isDirectory ? Icons.folder : _getIconForType(file.type),
                     color: file.isDirectory ? Colors.amber : Colors.blueGrey,
                   ),
-                  title: Text(PathUtils.getName(file.path)),
-                  subtitle: Text(
-                    file.isDirectory ? 'Folder' : '${(file.size / 1024).toStringAsFixed(2)} KB',
-                  ),
+                  title: Text(currentAdapter is SafStorageAdapter ? Uri.parse(file.path).pathSegments.last : PathUtils.getName(file.path)),
+                  subtitle: Text(file.isDirectory ? 'Folder' : '${(file.size / 1024).toStringAsFixed(2)} KB'),
                   onTap: () {
                     if (file.isDirectory) {
                       ref.read(currentPathProvider.notifier).state = file.path;
-                    } 
-                    else if (file.path.toLowerCase().endsWith('.zip') && currentAdapter is! ZipArchiveAdapter) {
+                    } else if (file.path.toLowerCase().endsWith('.zip') && currentAdapter is! ZipArchiveAdapter) {
                       ref.read(realParentPathProvider.notifier).state = currentPath;
                       ref.read(storageAdapterProvider.notifier).state = ZipArchiveAdapter(zipFilePath: file.path);
                       ref.read(currentPathProvider.notifier).state = '/'; 
-                    } 
-                    else {
+                    } else {
                       final handler = registry.handlerFor(file);
-                      if (handler != null) {
-                        handler.open(context, file, currentAdapter);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('No handler found for: ${PathUtils.getName(file.path)}')),
-                        );
-                      }
+                      if (handler != null) handler.open(context, file, currentAdapter);
                     }
                   },
-                  onLongPress: () {
-                    _showFileOperationsMenu(context, ref, file);
-                  },
+                  onLongPress: () => _showFileOperationsMenu(context, ref, file),
                 );
               },
             );
           },
         ),
+      ),
+      // --- NEW SAF FOLDER PICKER ---
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.sd_storage),
+        label: const Text('Open SD Card (SAF)'),
+        backgroundColor: Colors.teal,
+        onPressed: () async {
+          // Native Android System prompt asking the user to authorize a folder
+          final uri = await saf_plugin.openDocumentTree(persistablePermission: true);
+          if (uri != null) {
+             // Swap out our entire architecture's data layer to use SAF instantly
+             ref.read(storageAdapterProvider.notifier).state = SafStorageAdapter(rootUri: uri);
+             ref.read(currentPathProvider.notifier).state = '/';
+          }
+        },
       ),
     );
   }
@@ -204,24 +173,6 @@ class FileBrowserDebug extends ConsumerWidget {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.compress, color: Colors.orange),
-                title: const Text('Compress to ZIP'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _enqueueTask(ref, file, TransferOperation.compress, '${file.path}.zip');
-                },
-              ),
-              if (file.path.toLowerCase().endsWith('.zip'))
-                ListTile(
-                  leading: const Icon(Icons.folder_zip, color: Colors.green),
-                  title: const Text('Extract ZIP'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    final destPath = file.path.substring(0, file.path.length - 4);
-                    _enqueueTask(ref, file, TransferOperation.extract, destPath);
-                  },
-                ),
-              ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text('Delete File'),
                 onTap: () {
@@ -240,25 +191,23 @@ class FileBrowserDebug extends ConsumerWidget {
     final queue = ref.read(transferQueueProvider);
     final currentAdapter = ref.read(storageAdapterProvider);
     
-    if (currentAdapter is ZipArchiveAdapter) {
-      ScaffoldMessenger.of(ref.context).showSnackBar(
-        const SnackBar(content: Text('Operations inside virtual ZIPs are not supported yet.')),
-      );
-      return;
+    // Virtual paths mapped for SAF Adapter writing
+    String finalDest = destPath;
+    if (currentAdapter is SafStorageAdapter && operation == TransferOperation.copy) {
+       final parentUri = ref.read(currentPathProvider);
+       final fileName = '${Uri.parse(file.path).pathSegments.last}_copy';
+       finalDest = 'saf_create|$parentUri|$fileName';
     }
 
     final task = TransferTask(
       id: DateTime.now().millisecondsSinceEpoch.toString(), 
       sourcePath: file.path,
-      destPath: destPath,
+      destPath: finalDest,
       totalBytes: file.size,
       operation: operation,
     );
 
     queue.enqueue(task, currentAdapter, currentAdapter);
-
-    ScaffoldMessenger.of(ref.context).showSnackBar(
-      SnackBar(content: Text('${operation.name.toUpperCase()} queued. Check Background Tasks.')),
-    );
+    ScaffoldMessenger.of(ref.context).showSnackBar(SnackBar(content: Text('${operation.name.toUpperCase()} queued.')));
   }
 }
