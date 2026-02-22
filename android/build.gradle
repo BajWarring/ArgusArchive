@@ -17,6 +17,7 @@ tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
 
+// 1. Lock Java and Kotlin versions globally
 allprojects {
     tasks.withType(JavaCompile).configureEach {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -29,18 +30,23 @@ allprojects {
     }
 }
 
-// This hook safely waits until all plugins are loaded, then forces the required fixes
+// 2. EARLY STAGE: Fix the AGP 8 namespace requirement BEFORE validation happens
+subprojects { project ->
+    project.plugins.withId("com.android.library") {
+        project.android {
+            if (namespace == null) {
+                namespace project.group
+            }
+        }
+    }
+}
+
+// 3. LATE STAGE: Force compileSdk 35 AFTER plugins have loaded to prevent them from reverting it (fixes 'lStar')
 gradle.projectsEvaluated {
     subprojects { project ->
         if (project.hasProperty('android')) {
             project.android {
-                // Fixes the 'lStar' error for older plugins like shared_storage
                 compileSdkVersion 35
-                
-                // Fixes the AGP 8 namespace requirement
-                if (namespace == null) {
-                    namespace project.group
-                }
             }
         }
     }
