@@ -5,7 +5,6 @@ import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../core/utils/path_utils.dart';
 
-/// Direct filesystem adapter for permissive platforms (Android standard directories, iOS sandbox, Desktop).
 class LocalStorageAdapter implements StorageAdapter {
   
   @override
@@ -61,8 +60,6 @@ class LocalStorageAdapter implements StorageAdapter {
 
   @override
   Future<void> copy(String src, String dst) async {
-    // Note: dart:io File.copy doesn't support directories natively.
-    // For directories, the TransferWorker will handle recursive traversal.
     await File(src).copy(dst);
   }
 
@@ -85,12 +82,9 @@ class LocalStorageAdapter implements StorageAdapter {
     });
   }
 
-  /// Helper to convert dart:io entities to domain models
   FileEntry _mapToEntry(FileSystemEntity entity, FileStat stat) {
     final isDir = stat.type == FileSystemEntityType.directory;
-    final name = PathUtils.getName(entity.path);
     
-    // Simplistic type detection; in reality, we'd use a mime resolver
     FileType type = isDir ? FileType.dir : FileType.unknown;
     if (!isDir) {
       final ext = PathUtils.getExtension(entity.path);
@@ -102,7 +96,7 @@ class LocalStorageAdapter implements StorageAdapter {
     }
 
     return FileEntry(
-      id: entity.path, // Local files use path as a unique ID
+      id: entity.path,
       path: entity.path,
       type: type,
       size: stat.size,
