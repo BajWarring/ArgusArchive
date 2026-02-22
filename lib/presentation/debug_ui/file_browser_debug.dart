@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../adapters/local/local_storage_adapter.dart';
+import '../../adapters/virtual/zip_archive_adapter.dart';
 import '../../core/enums/file_type.dart';
 import '../../core/utils/path_utils.dart';
 import 'providers.dart';
 
-/// Minimal UI to verify the StorageAdapter reads correctly.
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({Key? key}) : super(key: key);
 
@@ -12,6 +13,7 @@ class FileBrowserDebug extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentPath = ref.watch(currentPathProvider);
     final contentsAsyncValue = ref.watch(directoryContentsProvider);
+    final currentAdapter = ref.watch(storageAdapterProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -21,7 +23,9 @@ class FileBrowserDebug extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.all(8.0),
             child: Text(
-              currentPath,
+              currentAdapter is ZipArchiveAdapter 
+                  ? 'ZIP: ${PathUtils.getName(currentAdapter.zipFilePath)} -> $currentPath'
+                  : currentPath,
               style: const TextStyle(fontSize: 12, color: Colors.white70),
               overflow: TextOverflow.ellipsis,
             ),
@@ -30,25 +34,46 @@ class FileBrowserDebug extends ConsumerWidget {
       ),
       body: WillPopScope(
         onWillPop: () async {
-          // Handle back navigation for directories
-          if (currentPath.split('/').length > 2) { // Extremely basic root check
-             final parent = PathUtils.join(currentPath, '..');
-             ref.read(currentPathProvider.notifier).state = parent;
-             return false;
+          if (currentAdapter is ZipArchiveAdapter) {
+            if (currentPath == '/' || currentPath.isEmpty) {
+              final parentPath = ref.read(realParentPathProvider);
+              if (parentPath != null) {
+                ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
+                ref.read(currentPathProvider.notifier).state = parentPath;
+                ref.read(realParentPathProvider.notifier).state = null;
+                return false;
+              }
+            } else {
+              final parent = PathUtils.join(currentPath, '..');
+              ref.read(currentPathProvider.notifier).state = parent == '.' ? '/' : parent;
+              return false;
+            }
+          } else {
+            if (currentPath.split('/').length > 2) {
+               final parent = PathUtils.join(currentPath, '..');
+               ref.read(currentPathProvider.notifier).state = parent;
+               return false;
+            }
           }
           return true;
         },
         child: contentsAsyncValue.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, stack) => Center(
-            child: Text('Error: $err', style: const TextStyle(color: Colors.red)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                'Error: $err\n\n(Did you grant storage permissions?)', 
+                style: const TextStyle(color: Colors.red),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
           data: (files) {
             if (files.isEmpty) {
               return const Center(child: Text('Empty Directory'));
             }
 
-            // Sort directories first, then alphabetically
             files.sort((a, b) {
               if (a.isDirectory && !b.isDirectory) return -1;
               if (!a.isDirectory && b.isDirectory) return 1;
@@ -71,10 +96,14 @@ class FileBrowserDebug extends ConsumerWidget {
                   ),
                   onTap: () {
                     if (file.isDirectory) {
-                      // Navigate into folder by updating the provider state
                       ref.read(currentPathProvider.notifier).state = file.path;
-                    } else {
-                      // Stub: File handlers will take over here
+                    } 
+                    else if (file.path.toLowerCase().endsWith('.zip') && currentAdapter is! ZipArchiveAdapter) {
+                      ref.read(realParentPathProvider.notifier).state = currentPath;
+                      ref.read(storageAdapterProvider.notifier).state = ZipArchiveAdapter(zipFilePath: file.path);
+                      ref.read(currentPathProvider.notifier).state = '/'; 
+                    } 
+                    else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Tapped file: ${PathUtils.getName(file.path)}')),
                       );
