@@ -11,7 +11,7 @@ import '../../services/transfer/transfer_task.dart';
 import 'providers.dart';
 import 'search_debug.dart';
 import 'transfer_debug.dart';
-import '../../services/storage/storage_volumes_service.dart';
+import 'package:argusarchive/services/storage/storage_volumes_service.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
