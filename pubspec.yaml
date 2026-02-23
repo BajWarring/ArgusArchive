@@ -54,7 +54,7 @@ dependencies:
   # Permissions
   permission_handler: ^11.3.1
   device_info_plus: ^9.1.2
-  share_plus: ^11.0.0  
+  share_plus: 10.1.4  
 
 dev_dependencies:
   flutter_test:
