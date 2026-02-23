@@ -37,7 +37,19 @@ jobs:
       - name: Analyze Project
         run: flutter analyze
 
-
+      # 🔥 NEW STEP: Patch the broken shared_storage package directly in the cache
+      - name: Patch shared_storage plugin for AGP 8
+        run: |
+          # Find the exact path to the cached package
+          FILE=$(ls ~/.pub-cache/hosted/pub.dev/shared_storage*/android/build.gradle | head -n 1)
+          
+          echo "Patching file: $FILE"
+          
+          # 1. Update SDK to 35 to fix the lStar AAPT error
+          sed -i 's/compileSdkVersion 30/compileSdkVersion 35/g' "$FILE"
+          
+          # 2. Inject the missing namespace to fix the AGP 8 crash
+          sed -i '/android {/a \    namespace "com.shared_storage"' "$FILE"
 
       - name: Build APK
         run: flutter build apk --release
