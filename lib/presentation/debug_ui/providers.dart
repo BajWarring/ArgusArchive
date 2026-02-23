@@ -74,7 +74,6 @@ final searchResultsProvider = FutureProvider.autoDispose<List<FileEntry>>((ref) 
   return await db.search(query);
 });
 
-
 /// 9. Global Transfer Queue Singleton
 final transferQueueProvider = Provider<TransferQueue>((ref) {
   final queue = TransferQueue(maxConcurrent: 2);
@@ -92,3 +91,25 @@ final queueTasksStreamProvider = StreamProvider<List<TransferTask>>((ref) {
   return queue.queueStream;
 });
 
+// ==========================================
+// NEW: FILE OPERATIONS STATE
+// ==========================================
+
+/// 11. Clipboard Action Enum
+enum ClipboardAction { copy, cut, none }
+
+/// 12. Clipboard State Object
+class ClipboardState {
+  final List<String> paths;
+  final ClipboardAction action;
+
+  ClipboardState({this.paths = const [], this.action = ClipboardAction.none});
+}
+
+/// 13. Holds the files the user currently has selected to move/copy.
+final clipboardProvider = StateProvider<ClipboardState>((ref) {
+  return ClipboardState();
+});
+
+/// 14. Tracks which files the user has check-marked in the current folder (Multi-select).
+final selectedFilesProvider = StateProvider<Set<String>>((ref) => {});
