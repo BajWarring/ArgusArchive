@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:share_plus/share_plus.dart';
 import '../../core/enums/file_type.dart';
 
 import 'providers.dart';
@@ -12,6 +13,7 @@ import '../../adapters/virtual/zip_archive_adapter.dart';
 import '../../services/storage/storage_volumes_service.dart';
 import '../../services/operations/archive_service.dart';
 import '../../services/operations/file_operations_service.dart';
+import '../../services/operations/apk_icon_service.dart';
 import '../../core/models/file_entry.dart';
 
 enum FileSortType { name, size, date, type }
@@ -23,9 +25,6 @@ final fileSortOrderProvider = StateProvider<FileSortOrder>((ref) => FileSortOrde
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
 
-  // ==========================================
-  // HELPER: SMART PATH FORMATTING
-  // ==========================================
   String _formatPathForUI(String path) {
     if (path == '/') return 'Root';
     String formatted = path;
@@ -38,35 +37,48 @@ class FileBrowserDebug extends ConsumerWidget {
   }
 
   // ==========================================
-  // HELPER: THUMBNAIL GENERATOR
+  // THUMBNAIL GENERATOR (Images & APKs)
   // ==========================================
   Widget _buildThumbnail(FileEntry file, StorageAdapter adapter, bool isDirectory) {
-    if (isDirectory) {
-      return const Icon(Icons.folder, color: Colors.amber, size: 40);
-    }
+    if (isDirectory) return const Icon(Icons.folder, color: Colors.amber, size: 40);
     
     final ext = p.extension(file.path).toLowerCase();
+
+    // 1. APK Thumbnails (Using our new Native Kotlin Channel)
+    if (ext == '.apk' && adapter is LocalStorageAdapter) {
+      return FutureBuilder<Uint8List?>(
+        future: ApkIconService.getApkIcon(file.path),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+             return const SizedBox(width: 40, height: 40, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2)));
+          }
+          if (snapshot.hasData && snapshot.data != null) {
+            return Image.memory(snapshot.data!, width: 40, height: 40, fit: BoxFit.contain, cacheWidth: 120);
+          }
+          return const Icon(Icons.android, color: Colors.green, size: 40);
+        }
+      );
+    }
     
-    // APK Fallback (Requires native plugin for true icons)
+    // Fallbacks for other archives
     if (ext == '.apk') return const Icon(Icons.android, color: Colors.green, size: 40);
     if (ext == '.zip' || ext == '.rar') return const Icon(Icons.archive, color: Colors.orange, size: 40);
 
-    // Image Thumbnails (Works inside and outside archives)
+    // 2. Image Thumbnails (Works physically AND inside virtual archives)
     if (file.type == FileType.image) {
       if (adapter is LocalStorageAdapter) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: Image.file(File(file.path), width: 40, height: 40, fit: BoxFit.cover, cacheWidth: 120),
+          child: Image.file(File(file.path), width: 40, height: 40, fit: BoxFit.cover, cacheWidth: 120, errorBuilder: (c,e,s) => const Icon(Icons.image, color: Colors.blue, size: 40)),
         );
       } else {
-        // Stream bytes from virtual ZIP adapter
         return FutureBuilder<List<int>>(
           future: adapter.openRead(file.path).then((s) => s.expand((e) => e).toList()),
           builder: (context, snapshot) {
             if (snapshot.hasData && snapshot.data!.isNotEmpty) {
               return ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: Image.memory(Uint8List.fromList(snapshot.data!), width: 40, height: 40, fit: BoxFit.cover, cacheWidth: 120),
+                child: Image.memory(Uint8List.fromList(snapshot.data!), width: 40, height: 40, fit: BoxFit.cover, cacheWidth: 120, errorBuilder: (c,e,s) => const Icon(Icons.image, color: Colors.blue, size: 40)),
               );
             }
             return const Icon(Icons.image, color: Colors.blue, size: 40);
@@ -74,6 +86,7 @@ class FileBrowserDebug extends ConsumerWidget {
         );
       }
     }
+    
     return const Icon(Icons.insert_drive_file, color: Colors.tealAccent, size: 40);
   }
 
@@ -145,7 +158,6 @@ class FileBrowserDebug extends ConsumerWidget {
                         List<PopupMenuEntry<String>> items = [];
                         items.add(const PopupMenuItem(enabled: false, child: Text('CURRENT PATH', style: TextStyle(fontSize: 11, color: Colors.teal))));
                         
-                        // Smart Breadcrumb Builder
                         String cumulativePath = '/';
                         final segments = currentPath.split('/');
                         int indent = 0;
@@ -154,7 +166,6 @@ class FileBrowserDebug extends ConsumerWidget {
                           if (segments[i].isEmpty) continue;
                           cumulativePath = p.join(cumulativePath, segments[i]);
                           
-                          // Skip ugly Android system paths in the UI
                           if (cumulativePath == '/storage' || cumulativePath == '/storage/emulated') continue;
                           
                           String displayName = segments[i];
@@ -314,7 +325,7 @@ class FileBrowserDebug extends ConsumerWidget {
                       title: const Text('..'),
                       subtitle: const Text('Go back'),
                       onTap: () {
-                        if (isSelectionMode) return; // Note: hasClipboard removed so you can navigate!
+                        if (isSelectionMode) return; 
                         final parent = p.dirname(currentPath);
                         ref.read(currentPathProvider.notifier).state = parent;
                       },
@@ -326,7 +337,6 @@ class FileBrowserDebug extends ConsumerWidget {
                   final isDirectory = file.isDirectory;
                   final isSelected = selectedFiles.contains(file.path);
                   
-                  // Clean Date Formatting
                   String dateStr = "${file.modifiedAt.day}/${file.modifiedAt.month}/${file.modifiedAt.year} ${file.modifiedAt.hour}:${file.modifiedAt.minute.toString().padLeft(2, '0')}";
 
                   return ListTile(
@@ -348,7 +358,6 @@ class FileBrowserDebug extends ConsumerWidget {
                           )
                         : Text('${(file.size / 1024).toStringAsFixed(2)} KB'),
                     
-                    // Date shown on the right side
                     trailing: Text(dateStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
 
                     onTap: () async {
@@ -406,9 +415,6 @@ class FileBrowserDebug extends ConsumerWidget {
     );
   }
 
-  // ==========================================
-  // BULK & NORMAL MENU HANDLERS
-  // ==========================================
   void _handleBulkActions(BuildContext context, WidgetRef ref, String action, List<String> paths) async {
     if (action == 'copy') {
       ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.copy);
@@ -430,7 +436,9 @@ class FileBrowserDebug extends ConsumerWidget {
         ref.invalidate(directoryContentsProvider);
       }
     } else if (action == 'share') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Install share_plus package to enable system sharing!')));
+       final xFiles = paths.map((path) => XFile(path)).toList();
+       await Share.shareXFiles(xFiles, text: 'Shared via Argus Archive');
+       ref.read(selectedFilesProvider.notifier).state = {};
     } else if (action == 'details') {
       final entries = await _getEntriesFromPaths(paths, ref.read(storageAdapterProvider));
       if (context.mounted) _showDetailsDialog(context, entries);
@@ -477,9 +485,6 @@ class FileBrowserDebug extends ConsumerWidget {
     );
   }
 
-  // ==========================================
-  // DETAILS DIALOG
-  // ==========================================
   Future<List<FileEntry>> _getEntriesFromPaths(List<String> paths, currentAdapter) async {
     List<FileEntry> entries = [];
     for (String path in paths) {
@@ -511,7 +516,7 @@ class FileBrowserDebug extends ConsumerWidget {
                 _detailRow('Modified:', files.first.modifiedAt.toString().split('.')[0]),
                 const SizedBox(height: 8),
                 const Text('Location (Hold to copy):', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
-                SelectableText(files.first.path, style: const TextStyle(fontSize: 14)), // Real path, selectable
+                SelectableText(files.first.path, style: const TextStyle(fontSize: 14)), 
               ] else ...[
                 _detailRow('Items Selected:', '${files.length}'),
                 _detailRow('Total Size:', '${(totalSize / 1024).toStringAsFixed(2)} KB'),
@@ -548,9 +553,6 @@ class FileBrowserDebug extends ConsumerWidget {
     );
   }
 
-  // ==========================================
-  // DYNAMIC LONG PRESS MENU 
-  // ==========================================
   void _showLongPressMenu(BuildContext context, WidgetRef ref, FileEntry file, bool isArchive, bool isApk) {
     final filePath = file.path;
     final selectedFiles = ref.read(selectedFilesProvider);
@@ -593,7 +595,7 @@ class FileBrowserDebug extends ConsumerWidget {
               ListTile(leading: const Icon(Icons.content_copy), title: Text(isSelectionMode ? 'Copy ${targetPaths.length} items' : 'Copy'), onTap: () { Navigator.pop(ctx); ref.read(clipboardProvider.notifier).state = ClipboardState(paths: targetPaths, action: ClipboardAction.copy); ref.read(selectedFilesProvider.notifier).state = {}; }),
               ListTile(leading: const Icon(Icons.content_cut), title: Text(isSelectionMode ? 'Cut ${targetPaths.length} items' : 'Cut'), onTap: () { Navigator.pop(ctx); ref.read(clipboardProvider.notifier).state = ClipboardState(paths: targetPaths, action: ClipboardAction.cut); ref.read(selectedFilesProvider.notifier).state = {}; }),
               ListTile(leading: const Icon(Icons.folder_zip, color: Colors.teal), title: Text(isSelectionMode ? 'Compress ${targetPaths.length} items to ZIP' : 'Compress to ZIP'), onTap: () async { Navigator.pop(ctx); final defaultName = targetPaths.length == 1 ? p.basenameWithoutExtension(targetPaths.first) : 'Archive'; final zipName = await _showZipNameDialog(context, defaultName); if (zipName != null && zipName.isNotEmpty) { if (!context.mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compressing...'))); final zipDest = p.join(p.dirname(filePath), '$zipName.zip'); await ArchiveService.compressEntities(targetPaths, zipDest); ref.read(selectedFilesProvider.notifier).state = {}; ref.invalidate(directoryContentsProvider); } }),
-              ListTile(leading: const Icon(Icons.share), title: const Text('Share'), onTap: () { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Install share_plus package to enable sharing!'))); }),
+              ListTile(leading: const Icon(Icons.share), title: const Text('Share'), onTap: () async { Navigator.pop(ctx); final xFiles = targetPaths.map((path) => XFile(path)).toList(); await Share.shareXFiles(xFiles, text: 'Shared via Argus Archive'); ref.read(selectedFilesProvider.notifier).state = {}; }),
               ListTile(leading: const Icon(Icons.info_outline), title: const Text('Details'), onTap: () async { Navigator.pop(ctx); final entries = await _getEntriesFromPaths(targetPaths, ref.read(storageAdapterProvider)); if (context.mounted) _showDetailsDialog(context, entries); }),
               ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: Text(isSelectionMode ? 'Delete ${targetPaths.length} items' : 'Delete', style: const TextStyle(color: Colors.red)), onTap: () { Navigator.pop(ctx); _showDeleteConfirmation(context, ref, targetPaths); }),
             ],
@@ -641,18 +643,13 @@ class FileBrowserDebug extends ConsumerWidget {
     );
   }
 
-  // ==========================================
-  // UNIVERSAL FAB HANDLER & EXTRACT COLLISION
-  // ==========================================
   Future<void> _handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
     final clipboard = ref.read(clipboardProvider);
     
-    // 1. EXTRACT LOGIC (With Dynamic Collision Handler)
     if (clipboard.action == ClipboardAction.extract) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extracting...')));
       final zipPath = clipboard.paths.first;
       
-      // Extract to a hidden temporary folder first
       final tempExtractDir = p.join(destDir, '.temp_extract_${DateTime.now().millisecondsSinceEpoch}');
       await Directory(tempExtractDir).create();
       
@@ -662,7 +659,6 @@ class FileBrowserDebug extends ConsumerWidget {
          final tempEntities = Directory(tempExtractDir).listSync();
          List<String> tempPaths = tempEntities.map((e) => e.path).toList();
          
-         // Route the extracted files through the identical CUT collision logic
          bool applyToAll = false;
          String? bulkAction;
          for (String sourcePath in tempPaths) {
@@ -689,7 +685,6 @@ class FileBrowserDebug extends ConsumerWidget {
       return;
     }
 
-    // 2. COPY AND CUT LOGIC
     bool applyToAll = false;
     String? bulkAction;
     for (String sourcePath in clipboard.paths) {
