@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../core/enums/file_type.dart';
+
 import 'providers.dart';
 import 'search_debug.dart';
 import '../../adapters/local/local_storage_adapter.dart';
@@ -12,9 +14,6 @@ import '../../services/operations/archive_service.dart';
 import '../../services/operations/file_operations_service.dart';
 import '../../core/models/file_entry.dart';
 
-// ==========================================
-// LOCAL STATE PROVIDERS FOR SORTING
-// ==========================================
 enum FileSortType { name, size, date, type }
 enum FileSortOrder { ascending, descending }
 
@@ -33,10 +32,49 @@ class FileBrowserDebug extends ConsumerWidget {
     if (formatted.startsWith('/storage/emulated/0')) {
       formatted = formatted.replaceFirst('/storage/emulated/0', 'Internal Storage');
     } else {
-      // Regex to catch SD Cards (usually /storage/XXXX-XXXX)
       formatted = formatted.replaceAll(RegExp(r'/storage/[A-Z0-9]{4}-[A-Z0-9]{4}'), 'SD Card');
     }
     return formatted;
+  }
+
+  // ==========================================
+  // HELPER: THUMBNAIL GENERATOR
+  // ==========================================
+  Widget _buildThumbnail(FileEntry file, StorageAdapter adapter, bool isDirectory) {
+    if (isDirectory) {
+      return const Icon(Icons.folder, color: Colors.amber, size: 40);
+    }
+    
+    final ext = p.extension(file.path).toLowerCase();
+    
+    // APK Fallback (Requires native plugin for true icons)
+    if (ext == '.apk') return const Icon(Icons.android, color: Colors.green, size: 40);
+    if (ext == '.zip' || ext == '.rar') return const Icon(Icons.archive, color: Colors.orange, size: 40);
+
+    // Image Thumbnails (Works inside and outside archives)
+    if (file.type == FileType.image) {
+      if (adapter is LocalStorageAdapter) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Image.file(File(file.path), width: 40, height: 40, fit: BoxFit.cover, cacheWidth: 120),
+        );
+      } else {
+        // Stream bytes from virtual ZIP adapter
+        return FutureBuilder<List<int>>(
+          future: adapter.openRead(file.path).then((s) => s.expand((e) => e).toList()),
+          builder: (context, snapshot) {
+            if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.memory(Uint8List.fromList(snapshot.data!), width: 40, height: 40, fit: BoxFit.cover, cacheWidth: 120),
+              );
+            }
+            return const Icon(Icons.image, color: Colors.blue, size: 40);
+          }
+        );
+      }
+    }
+    return const Icon(Icons.insert_drive_file, color: Colors.tealAccent, size: 40);
   }
 
   @override
@@ -85,13 +123,10 @@ class FileBrowserDebug extends ConsumerWidget {
               ? IconButton(icon: const Icon(Icons.close), onPressed: () => ref.read(selectedFilesProvider.notifier).state = {})
               : (hasClipboard ? IconButton(icon: const Icon(Icons.close, color: Colors.redAccent), onPressed: () => ref.read(clipboardProvider.notifier).state = ClipboardState()) : null),
 
-          // ==========================================
-          // HEADER TITLE & BREADCRUMB DROPDOWN
-          // ==========================================
           title: isSelectionMode 
               ? Text("${selectedFiles.length} Selected", style: const TextStyle(fontSize: 18))
               : hasClipboard 
-                  ? const Text("Select Destination", style: TextStyle(fontSize: 18))
+                  ? Text(clipboard.action == ClipboardAction.extract ? "Select Extract Destination" : "Select Destination", style: const TextStyle(fontSize: 18))
                   : PopupMenuButton<String>(
                       offset: const Offset(0, 50),
                       tooltip: 'Navigation & Drives',
@@ -108,31 +143,36 @@ class FileBrowserDebug extends ConsumerWidget {
                       ),
                       itemBuilder: (context) {
                         List<PopupMenuEntry<String>> items = [];
-                        
-                        // Section 1: Breadcrumbs
                         items.add(const PopupMenuItem(enabled: false, child: Text('CURRENT PATH', style: TextStyle(fontSize: 11, color: Colors.teal))));
                         
+                        // Smart Breadcrumb Builder
+                        String cumulativePath = '/';
                         final segments = currentPath.split('/');
-                        String cumulativePath = '';
+                        int indent = 0;
+                        
                         for (int i = 0; i < segments.length; i++) {
-                          if (segments[i].isEmpty) {
-                            if (i == 0) cumulativePath = '/';
-                            continue;
-                          }
+                          if (segments[i].isEmpty) continue;
                           cumulativePath = p.join(cumulativePath, segments[i]);
+                          
+                          // Skip ugly Android system paths in the UI
+                          if (cumulativePath == '/storage' || cumulativePath == '/storage/emulated') continue;
+                          
+                          String displayName = segments[i];
+                          if (cumulativePath == '/storage/emulated/0') displayName = 'Internal Storage';
+                          else if (RegExp(r'^/storage/[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(cumulativePath)) displayName = 'SD Card';
+
                           final navPath = cumulativePath; 
                           items.add(PopupMenuItem(
                             value: 'nav|$navPath',
                             child: Padding(
-                              padding: EdgeInsets.only(left: (i * 10.0).clamp(0.0, 40.0)),
-                              child: Row(children: [const Icon(Icons.subdirectory_arrow_right, size: 16), const SizedBox(width: 8), Text(_formatPathForUI(segments[i]))]),
+                              padding: EdgeInsets.only(left: (indent * 10.0).clamp(0.0, 40.0)),
+                              child: Row(children: [const Icon(Icons.subdirectory_arrow_right, size: 16), const SizedBox(width: 8), Text(displayName)]),
                             ),
                           ));
+                          indent++;
                         }
 
                         items.add(const PopupMenuDivider());
-                        
-                        // Section 2: Drives
                         items.add(const PopupMenuItem(enabled: false, child: Text('DRIVES', style: TextStyle(fontSize: 11, color: Colors.teal))));
                         items.add(const PopupMenuItem(value: 'drive|/storage/emulated/0', child: Row(children: [Icon(Icons.phone_android), SizedBox(width: 8), Text('Internal Storage')])));
                         items.add(const PopupMenuItem(value: 'drive_sd', child: Row(children: [Icon(Icons.sd_storage), SizedBox(width: 8), Text('SD Card / USB')])));
@@ -162,22 +202,16 @@ class FileBrowserDebug extends ConsumerWidget {
                       },
                     ),
 
-          // ==========================================
-          // HEADER ACTIONS
-          // ==========================================
           actions: [
-            // SELECTION MODE ACTIONS
             if (isSelectionMode) ...[
               PopupMenuButton<String>(
                 icon: const Icon(Icons.checklist),
                 tooltip: 'Selection Options',
                 onSelected: (val) {
                   final allFiles = asyncContents.value?.where((e) => e.path != '..').map((e) => e.path).toSet() ?? {};
-                  if (val == 'all') {
-                    ref.read(selectedFilesProvider.notifier).state = allFiles;
-                  } else if (val == 'none') {
-                    ref.read(selectedFilesProvider.notifier).state = {};
-                  } else if (val == 'invert') {
+                  if (val == 'all') ref.read(selectedFilesProvider.notifier).state = allFiles;
+                  else if (val == 'none') ref.read(selectedFilesProvider.notifier).state = {};
+                  else if (val == 'invert') {
                     final current = ref.read(selectedFilesProvider);
                     ref.read(selectedFilesProvider.notifier).state = allFiles.difference(current);
                   }
@@ -201,9 +235,7 @@ class FileBrowserDebug extends ConsumerWidget {
                   const PopupMenuItem(value: 'details', child: Row(children: [Icon(Icons.info_outline), SizedBox(width: 8), Text('Details')])),
                 ],
               ),
-            ] 
-            // NORMAL MODE ACTIONS
-            else if (!hasClipboard) ...[
+            ] else if (!hasClipboard) ...[
               IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchDebugScreen()))),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
@@ -211,16 +243,11 @@ class FileBrowserDebug extends ConsumerWidget {
                 itemBuilder: (context) {
                   final sType = ref.watch(fileSortProvider);
                   final sOrder = ref.watch(fileSortOrderProvider);
-                  
                   return [
                     const PopupMenuItem(value: 'new_folder', child: Row(children: [Icon(Icons.create_new_folder), SizedBox(width: 8), Text('New Folder')])),
                     const PopupMenuItem(value: 'new_file', child: Row(children: [Icon(Icons.note_add), SizedBox(width: 8), Text('New File')])),
                     const PopupMenuDivider(),
-                    const PopupMenuItem(
-                      enabled: false,
-                      child: Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-                    ),
-
+                    const PopupMenuItem(enabled: false, child: Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal))),
                     PopupMenuItem(value: 'sort_name', child: _buildSortItem('Name', sType == FileSortType.name)),
                     PopupMenuItem(value: 'sort_size', child: _buildSortItem('Size', sType == FileSortType.size)),
                     PopupMenuItem(value: 'sort_date', child: _buildSortItem('Date', sType == FileSortType.date)),
@@ -237,21 +264,13 @@ class FileBrowserDebug extends ConsumerWidget {
           ],
         ),
 
-        // ==========================================
-        // FLOATING ACTION BUTTON
-        // ==========================================
         floatingActionButton: hasClipboard && !isSelectionMode
             ? FloatingActionButton.extended(
                 backgroundColor: clipboard.action == ClipboardAction.extract ? Colors.orange : Colors.teal,
                 onPressed: () => _handleFabAction(context, ref, currentPath),
-                icon: Icon(
-                  clipboard.action == ClipboardAction.extract ? Icons.unarchive : 
-                  clipboard.action == ClipboardAction.cut ? Icons.drive_file_move : Icons.content_paste, 
-                  color: Colors.white
-                ),
+                icon: Icon(clipboard.action == ClipboardAction.extract ? Icons.unarchive : clipboard.action == ClipboardAction.cut ? Icons.drive_file_move : Icons.content_paste, color: Colors.white),
                 label: Text(
-                  clipboard.action == ClipboardAction.extract ? 'Extract Here' :
-                  clipboard.action == ClipboardAction.cut ? 'Move Here (${clipboard.paths.length})' : 'Paste Here (${clipboard.paths.length})',
+                  clipboard.action == ClipboardAction.extract ? 'Extract Here' : clipboard.action == ClipboardAction.cut ? 'Move Here (${clipboard.paths.length})' : 'Paste Here (${clipboard.paths.length})',
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               )
@@ -272,15 +291,10 @@ class FileBrowserDebug extends ConsumerWidget {
               if (!a.isDirectory && b.isDirectory) return 1;
               
               int result = 0;
-              if (sortType == FileSortType.size) {
-                result = a.size.compareTo(b.size);
-              } else if (sortType == FileSortType.date) {
-                result = a.modifiedAt.compareTo(b.modifiedAt);
-              } else if (sortType == FileSortType.type) {
-                result = p.extension(a.path).compareTo(p.extension(b.path));
-              } else {
-                result = p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
-              }
+              if (sortType == FileSortType.size) result = a.size.compareTo(b.size);
+              else if (sortType == FileSortType.date) result = a.modifiedAt.compareTo(b.modifiedAt);
+              else if (sortType == FileSortType.type) result = p.extension(a.path).compareTo(p.extension(b.path));
+              else result = p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
               
               return sortOrder == FileSortOrder.ascending ? result : -result;
             });
@@ -300,7 +314,7 @@ class FileBrowserDebug extends ConsumerWidget {
                       title: const Text('..'),
                       subtitle: const Text('Go back'),
                       onTap: () {
-                        if (isSelectionMode || hasClipboard) return;
+                        if (isSelectionMode) return; // Note: hasClipboard removed so you can navigate!
                         final parent = p.dirname(currentPath);
                         ref.read(currentPathProvider.notifier).state = parent;
                       },
@@ -311,21 +325,19 @@ class FileBrowserDebug extends ConsumerWidget {
                   final file = sortedFiles[fileIndex];
                   final isDirectory = file.isDirectory;
                   final isSelected = selectedFiles.contains(file.path);
+                  
+                  // Clean Date Formatting
+                  String dateStr = "${file.modifiedAt.day}/${file.modifiedAt.month}/${file.modifiedAt.year} ${file.modifiedAt.hour}:${file.modifiedAt.minute.toString().padLeft(2, '0')}";
 
                   return ListTile(
                     tileColor: isSelected ? Colors.teal.withValues(alpha: 0.2) : null,
                     leading: Stack(
                       children: [
-                        Icon(
-                          isDirectory ? Icons.folder : Icons.insert_drive_file,
-                          color: isDirectory ? Colors.amber : Colors.tealAccent,
-                          size: 40,
-                        ),
-                        if (isSelected)
-                          const Positioned(right: 0, bottom: 0, child: Icon(Icons.check_circle, color: Colors.teal, size: 20))
+                        _buildThumbnail(file, currentAdapter, isDirectory),
+                        if (isSelected) const Positioned(right: 0, bottom: 0, child: Icon(Icons.check_circle, color: Colors.teal, size: 20))
                       ],
                     ),
-                    title: Text(p.basename(file.path)),
+                    title: Text(p.basename(file.path), maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: isDirectory
                         ? FutureBuilder<int>(
                             future: currentAdapter is LocalStorageAdapter ? Directory(file.path).list().length : Future.value(0),
@@ -335,6 +347,10 @@ class FileBrowserDebug extends ConsumerWidget {
                             },
                           )
                         : Text('${(file.size / 1024).toStringAsFixed(2)} KB'),
+                    
+                    // Date shown on the right side
+                    trailing: Text(dateStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+
                     onTap: () async {
                       if (isSelectionMode) {
                         final set = Set<String>.from(selectedFiles);
@@ -587,7 +603,6 @@ class FileBrowserDebug extends ConsumerWidget {
     );
   }
 
-  // Other Menus (Archive Tap, ZipName, FAB, etc)
   Future<String?> _showZipNameDialog(BuildContext context, String defaultName) async {
     TextEditingController controller = TextEditingController(text: defaultName);
     return showDialog<String>(context: context, builder: (ctx) => AlertDialog(title: const Text('Compress Files'), content: TextField(controller: controller, decoration: const InputDecoration(labelText: 'Archive Name', suffixText: '.zip'), autofocus: true), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), TextButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Compress'))]));
@@ -626,16 +641,55 @@ class FileBrowserDebug extends ConsumerWidget {
     );
   }
 
+  // ==========================================
+  // UNIVERSAL FAB HANDLER & EXTRACT COLLISION
+  // ==========================================
   Future<void> _handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
     final clipboard = ref.read(clipboardProvider);
+    
+    // 1. EXTRACT LOGIC (With Dynamic Collision Handler)
     if (clipboard.action == ClipboardAction.extract) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extracting...')));
-      await ArchiveService.extractZip(clipboard.paths.first, destDir);
+      final zipPath = clipboard.paths.first;
+      
+      // Extract to a hidden temporary folder first
+      final tempExtractDir = p.join(destDir, '.temp_extract_${DateTime.now().millisecondsSinceEpoch}');
+      await Directory(tempExtractDir).create();
+      
+      bool success = await ArchiveService.extractZip(zipPath, tempExtractDir);
+      
+      if (success && context.mounted) {
+         final tempEntities = Directory(tempExtractDir).listSync();
+         List<String> tempPaths = tempEntities.map((e) => e.path).toList();
+         
+         // Route the extracted files through the identical CUT collision logic
+         bool applyToAll = false;
+         String? bulkAction;
+         for (String sourcePath in tempPaths) {
+            bool moveSuccess = await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: false);
+            if (!moveSuccess && context.mounted) {
+                 String action;
+                 if (applyToAll && bulkAction != null) { action = bulkAction; } 
+                 else {
+                   final result = await _showAdvancedCollisionDialog(context, sourcePath);
+                   if (result == null) break; 
+                   action = result['action'];
+                   if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
+                 }
+                 if (action == 'skip') { continue; } 
+                 else if (action == 'replace') { await FileOperationsService.deleteEntity(p.join(destDir, p.basename(sourcePath))); await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: false); } 
+                 else if (action == 'rename') { await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: true); }
+            }
+         }
+      }
+      
+      if (Directory(tempExtractDir).existsSync()) await Directory(tempExtractDir).delete(recursive: true);
       ref.read(clipboardProvider.notifier).state = ClipboardState();
       ref.invalidate(directoryContentsProvider);
       return;
     }
 
+    // 2. COPY AND CUT LOGIC
     bool applyToAll = false;
     String? bulkAction;
     for (String sourcePath in clipboard.paths) {
