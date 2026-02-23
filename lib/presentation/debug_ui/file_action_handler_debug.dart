@@ -1,4 +1,108 @@
-  static Future<void> handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:share_plus/share_plus.dart';
+
+import '../../core/models/file_entry.dart';
+import '../../core/enums/file_type.dart';
+import '../../services/transfer/transfer_task.dart';
+import '../../services/operations/file_operations_service.dart';
+
+import 'providers.dart';
+import 'header_icons_debug.dart';
+import 'operation_progress_dialog_debug.dart';
+import 'file_dialog_debug.dart';
+
+class FileActionHandlerDebug {
+  
+  static Future<List<FileEntry>> getEntriesFromPaths(List<String> paths, dynamic currentAdapter) async {
+    List<FileEntry> entries = [];
+    for (String path in paths) {
+      bool isDir = await FileSystemEntity.isDirectory(path);
+      final stat = await FileStat.stat(path);
+      entries.add(FileEntry(id: path, path: path, type: isDir ? FileType.dir : FileType.unknown, size: stat.size, modifiedAt: stat.modified));
+    }
+    return entries;
+  }
+
+  static void handleBulkActions(BuildContext context, WidgetRef ref, String action, List<String> paths) async {
+    final queue = ref.read(transferQueueProvider);
+    final currentAdapter = ref.read(storageAdapterProvider);
+
+    if (action == 'copy') {
+      ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.copy);
+      ref.read(selectedFilesProvider.notifier).state = {};
+    } else if (action == 'cut') {
+      ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.cut);
+      ref.read(selectedFilesProvider.notifier).state = {};
+    } else if (action == 'delete') {
+      FileDialogsDebug.showDeleteConfirmation(context, ref, paths);
+    } else if (action == 'compress') {
+      final defaultName = paths.length == 1 ? p.basenameWithoutExtension(paths.first) : 'Archive';
+      final zipName = await FileDialogsDebug.showZipNameDialog(context, defaultName);
+      
+      if (zipName != null && zipName.isNotEmpty) {
+        final zipDest = p.join(p.dirname(paths.first), '$zipName.zip');
+        List<String> queuedTaskIds = [];
+
+        for (int i = 0; i < paths.length; i++) {
+          final stat = await FileStat.stat(paths[i]);
+          final dest = paths.length == 1 ? zipDest : p.join(p.dirname(paths.first), '${p.basenameWithoutExtension(paths[i])}.zip');
+          
+          final task = TransferTask(
+            id: 'compress_${DateTime.now().millisecondsSinceEpoch}_$i',
+            sourcePath: paths[i],
+            destPath: dest,
+            totalBytes: stat.size,
+            operation: TransferOperation.compress,
+          );
+          queue.enqueue(task, currentAdapter, currentAdapter);
+          queuedTaskIds.add(task.id);
+        }
+
+        // --- CONTEXT SAFETY CHECK ---
+        if (!context.mounted) return;
+        
+        OperationProgressDialogDebug.show(context, queuedTaskIds);
+        ref.read(selectedFilesProvider.notifier).state = {};
+      }
+    } else if (action == 'share') {
+       final xFiles = paths.map((path) => XFile(path)).toList();
+       await Share.shareXFiles(xFiles, text: 'Shared via Argus Archive');
+       ref.read(selectedFilesProvider.notifier).state = {};
+    } else if (action == 'details') {
+      final entries = await getEntriesFromPaths(paths, ref.read(storageAdapterProvider));
+      if (context.mounted) FileDialogsDebug.showDetailsDialog(context, entries);
+    }
+  }
+
+  static void handleNormalMenu(BuildContext context, WidgetRef ref, String value, String currentPath) async {
+    if (value.startsWith('sort_')) {
+      final map = {'sort_name': FileSortType.name, 'sort_size': FileSortType.size, 'sort_date': FileSortType.date, 'sort_type': FileSortType.type};
+      ref.read(fileSortProvider.notifier).state = map[value]!;
+    } else if (value.startsWith('order_')) {
+      ref.read(fileSortOrderProvider.notifier).state = value == 'order_asc' ? FileSortOrder.ascending : FileSortOrder.descending;
+    } else if (value == 'index') {
+      final indexer = await ref.read(indexServiceProvider.future);
+      await indexer.start(rootPath: '/storage/emulated/0', rebuild: true);
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started!')));
+    } else if (value == 'new_folder' || value == 'new_file') {
+      final isFolder = value == 'new_folder';
+      final name = await FileDialogsDebug.showCreateDialog(context, isFolder ? 'New Folder' : 'New File');
+      if (name != null && name.isNotEmpty) {
+        final newPath = p.join(currentPath, name);
+        if (isFolder) {
+          await Directory(newPath).create();
+        } else {
+          await File(newPath).create();
+        }
+        ref.invalidate(directoryContentsProvider);
+      }
+    }
+  }
+
+    static Future<void> handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
     final clipboard = ref.read(clipboardProvider);
     final queue = ref.read(transferQueueProvider);
     final currentAdapter = ref.read(storageAdapterProvider);
