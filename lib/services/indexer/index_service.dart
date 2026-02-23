@@ -2,22 +2,21 @@ import 'dart:async';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
-import '../../data/db/index_db.dart';
+import '../../data/db/search_database.dart'; // Updated Import
 
 class IndexService {
   final StorageAdapter adapter;
-  final IndexDb indexDb;
+  final SearchDatabase searchDb; // Updated class
   
   StreamSubscription<StorageEvent>? _watchSubscription;
   bool _isIndexing = false;
 
-  IndexService({required this.adapter, required this.indexDb});
+  IndexService({required this.adapter, required this.searchDb});
 
   Future<void> start({required String rootPath, bool rebuild = false}) async {
-    await indexDb.init();
-
+    await searchDb.init();
     if (rebuild) {
-      await indexDb.clearIndex();
+      await searchDb.clearIndex();
       _buildIndexBackground(rootPath);
     }
 
@@ -27,24 +26,23 @@ class IndexService {
   Future<void> _buildIndexBackground(String rootPath) async {
     if (_isIndexing) return;
     _isIndexing = true;
-
     try {
       final List<String> dirsToScan = [rootPath];
-
       while (dirsToScan.isNotEmpty) {
         final currentDir = dirsToScan.removeAt(0);
-        
         try {
           final entries = await adapter.list(currentDir);
           
+          // Use the high-performance batch insert
+          await searchDb.insertBatch(entries); 
+          
           for (final entry in entries) {
-            await indexDb.insert(entry);
             if (entry.isDirectory) {
               dirsToScan.add(entry.path);
             }
           }
         } catch (e) {
-          continue; 
+          continue;
         }
 
         await Future.delayed(const Duration(milliseconds: 10));
@@ -56,11 +54,10 @@ class IndexService {
 
   void _listenToChanges(String rootPath) {
     _watchSubscription?.cancel();
-    
     _watchSubscription = adapter.watch(rootPath).listen((event) async {
       try {
         if (event.eventType == 'deleted') {
-          await indexDb.delete(event.path);
+          await searchDb.delete(event.path);
         } else if (event.eventType == 'created' || event.eventType == 'modified') {
           final meta = await adapter.stat(event.path);
           
@@ -72,7 +69,8 @@ class IndexService {
             modifiedAt: meta.modifiedAt,
           );
           
-          await indexDb.insert(entry);
+          // Use batch insert for single files too for consistency
+          await searchDb.insertBatch([entry]);
         }
       } catch (_) {
       }
@@ -85,10 +83,11 @@ class IndexService {
 
   FileType _guessTypeFromPath(String path) {
     final lowerPath = path.toLowerCase();
-    if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.png')) return FileType.image;
+    // Upgraded guesser mapping to match our new thumbnails!
+    if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.png') || lowerPath.endsWith('.gif') || lowerPath.endsWith('.webp') || lowerPath.endsWith('.bmp') || lowerPath.endsWith('.svg')) return FileType.image;
     if (lowerPath.endsWith('.mp4')) return FileType.video;
     if (lowerPath.endsWith('.pdf')) return FileType.document;
     if (lowerPath.endsWith('.zip')) return FileType.archive;
-    return FileType.unknown; 
+    return FileType.unknown;
   }
 }
