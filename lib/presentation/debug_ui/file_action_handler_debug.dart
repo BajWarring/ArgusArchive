@@ -42,13 +42,10 @@ class FileActionHandlerDebug {
       final defaultName = paths.length == 1 ? p.basenameWithoutExtension(paths.first) : 'Archive';
       final zipName = await FileDialogsDebug.showZipNameDialog(context, defaultName);
       
-      if (zipName != null && zipName.isNotEmpty && context.mounted) {
+      if (zipName != null && zipName.isNotEmpty) {
         final zipDest = p.join(p.dirname(paths.first), '$zipName.zip');
         List<String> queuedTaskIds = [];
 
-        // Note: The backend TransferWorker _handleCompress currently compresses a single source path. 
-        // For multi-select, we map them as individual zip tasks or handle via ArchiveService directly.
-        // Assuming we are adapting this to the queue:
         for (int i = 0; i < paths.length; i++) {
           final stat = await FileStat.stat(paths[i]);
           final dest = paths.length == 1 ? zipDest : p.join(p.dirname(paths.first), '${p.basenameWithoutExtension(paths[i])}.zip');
@@ -64,6 +61,9 @@ class FileActionHandlerDebug {
           queuedTaskIds.add(task.id);
         }
 
+        // --- CONTEXT SAFETY CHECK ---
+        if (!context.mounted) return;
+        
         OperationProgressDialogDebug.show(context, queuedTaskIds);
         ref.read(selectedFilesProvider.notifier).state = {};
       }
@@ -145,6 +145,9 @@ class FileActionHandlerDebug {
         if (applyToAll && bulkAction != null) { 
           action = bulkAction; 
         } else {
+          // --- CONTEXT SAFETY CHECK ---
+          if (!context.mounted) return;
+          
           final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
           if (result == null) break; // User hit cancel
           action = result['action'];
@@ -178,7 +181,9 @@ class FileActionHandlerDebug {
     }
     
     // Show the active progress dialog bound to these specific tasks
-    if (queuedTaskIds.isNotEmpty && context.mounted) {
+    if (queuedTaskIds.isNotEmpty) {
+       // --- CONTEXT SAFETY CHECK ---
+       if (!context.mounted) return;
        OperationProgressDialogDebug.show(context, queuedTaskIds);
     }
     
