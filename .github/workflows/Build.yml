@@ -30,12 +30,12 @@ jobs:
         with:
           flutter-version: '3.27.4'
 
-      # ✅ Decode keystore from secrets
+      # Decode keystore from secrets
       - name: Decode Keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
-      # ✅ Create key.properties for Gradle signing
+      # Create key.properties for Gradle signing
       - name: Create key.properties
         run: |
           echo "storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}" > android/key.properties
@@ -49,30 +49,7 @@ jobs:
       - name: Analyze Project
         run: flutter analyze
 
-      # 🔥 Patch share_plus plugin for JVM target 17
-      - name: Force Java 17 Compatibility across all Gradle files
-        run: |
-          # 1. Update the app-level build.gradle to Java 17
-          sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' android/app/build.gradle
-          sed -i "s/jvmTarget = '1.8'/jvmTarget = '17'/g" android/app/build.gradle
-          
-          # 2. Force all external plugins to use Java 17
-          cat <<EOF >> android/build.gradle
-          
-          allprojects {
-              tasks.withType(JavaCompile).configureEach {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-                  kotlinOptions {
-                      jvmTarget = "17"
-                  }
-              }
-          }
-          EOF
-
-      # ✅ Build with automatic versionCode
+      # Build with automatic versionCode
       - name: Build APK
         run: flutter build apk --release --build-number=${{ github.run_number }}
 
