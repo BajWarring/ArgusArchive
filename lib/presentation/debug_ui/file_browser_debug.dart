@@ -1,16 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../adapters/local/local_storage_adapter.dart';
-import '../../adapters/android/saf_storage_adapter.dart';
-import '../../adapters/virtual/zip_archive_adapter.dart';
-import '../../core/enums/file_type.dart';
-import '../../core/models/file_entry.dart';
-import '../../core/utils/path_utils.dart';
-import '../../services/transfer/transfer_task.dart';
+import 'package:path/path.dart' as p;
+
+// Make sure these imports map correctly to your project structure!
 import 'providers.dart';
-import 'search_debug.dart';
-import 'transfer_debug.dart';
-import 'package:argus_archive/services/storage/storage_volumes_service.dart';
+import '../../adapters/local/local_storage_adapter.dart';
+import '../../services/storage/storage_volumes_service.dart';
+import '../../services/operations/archive_service.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
@@ -18,149 +15,168 @@ class FileBrowserDebug extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentPath = ref.watch(currentPathProvider);
-    final contentsAsyncValue = ref.watch(directoryContentsProvider);
     final currentAdapter = ref.watch(storageAdapterProvider);
-    final registry = ref.watch(fileHandlerRegistryProvider);
+    final asyncContents = ref.watch(directoryContentsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Debug File Browser'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.swap_vert),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TransferDebugScreen())),
-          ),
-          IconButton(
-            icon: const Icon(Icons.storage),
-            onPressed: () async {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started...')));
-              try {
-                final indexer = await ref.read(indexServiceProvider.future);
-                await indexer.start(rootPath: currentPath, rebuild: true);
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing complete!')));
-              } catch (e) {
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Indexing failed: $e')));
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              ref.read(searchQueryProvider.notifier).state = '';
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchDebugScreen()));
-            },
-          ),
-                    IconButton(
-            icon: const Icon(Icons.sd_card),
-            tooltip: 'Storage Volumes',
-            onPressed: () async {
-              final roots = await StorageVolumesService.getStorageRoots();
-              
-              if (context.mounted) {
-                showModalBottomSheet(
-                  context: context,
-                  builder: (ctx) {
-                    return SafeArea(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: roots.map((rootPath) {
-                          final isInternal = rootPath == '/storage/emulated/0';
-                          return ListTile(
-                            leading: Icon(
-                              isInternal ? Icons.phone_android : Icons.sd_storage,
-                              color: isInternal ? Colors.teal : Colors.amber,
-                            ),
-                            title: Text(isInternal ? 'Internal Storage' : 'SD Card / USB'),
-                            subtitle: Text(rootPath, style: const TextStyle(fontSize: 12)),
-                            onTap: () {
-                              // Switch the path cleanly using our LocalStorageAdapter
-                              ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
-                              ref.read(currentPathProvider.notifier).state = rootPath;
-                              Navigator.pop(ctx);
-                            },
-                          );
-                        }).toList(),
-                      ),
-                    );
-                  },
-                );
-              }
-            },
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(40),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              currentAdapter is SafStorageAdapter ? 'SAF URI: $currentPath' : currentPath,
-              style: const TextStyle(fontSize: 10, color: Colors.white70),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-      ),
-      body: PopScope(
-        canPop: false,
-                onPopInvokedWithResult: (didPop, result) {
-          if (didPop) return;
-          
-          if (currentAdapter is ZipArchiveAdapter) {
-            final parentPath = ref.read(realParentPathProvider);
-            if (parentPath != null) {
-              ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
-              ref.read(currentPathProvider.notifier).state = parentPath;
-              ref.read(realParentPathProvider.notifier).state = null;
-            } else {
-              Navigator.of(context).pop();
-            }
-          } else if (currentAdapter is SafStorageAdapter) {
-             ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
-             // Reset to internal storage root instead of Download
-             ref.read(currentPathProvider.notifier).state = '/storage/emulated/0';
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        // Custom back button navigation logic
+        if (currentAdapter is! LocalStorageAdapter) {
+          final parentPath = ref.read(realParentPathProvider);
+          if (parentPath != null) {
+            ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
+            ref.read(currentPathProvider.notifier).state = parentPath;
+            ref.read(realParentPathProvider.notifier).state = null;
           } else {
-            // Prevent navigating higher than internal storage root
-            if (currentPath == '/storage/emulated/0') {
-               // We are at the root, let Android close or background the app
-            } else if (currentPath.split('/').length > 4) { 
-               // Safe to navigate up (e.g., from /storage/emulated/0/Music to /storage/emulated/0)
-               final parent = PathUtils.join(currentPath, '..');
-               ref.read(currentPathProvider.notifier).state = parent;
-            }
+            Navigator.of(context).pop();
           }
-        },
-
-        child: contentsAsyncValue.when(
+        } else {
+          if (currentPath == '/storage/emulated/0' || currentPath == '/') {
+             // Let Android OS handle backing out of the app
+             Navigator.of(context).pop();
+          } else {
+             final parent = p.dirname(currentPath);
+             ref.read(currentPathProvider.notifier).state = parent;
+          }
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(p.basename(currentPath).isEmpty ? "Root" : p.basename(currentPath)),
+          actions: [
+            // Drive Picker Icon
+            IconButton(
+              icon: const Icon(Icons.sd_card),
+              tooltip: 'Storage Volumes',
+              onPressed: () async {
+                final roots = await StorageVolumesService.getStorageRoots();
+                if (context.mounted) {
+                  showModalBottomSheet(
+                    context: context,
+                    builder: (ctx) {
+                      return SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: roots.map((rootPath) {
+                            final isInternal = rootPath == '/storage/emulated/0';
+                            return ListTile(
+                              leading: Icon(
+                                isInternal ? Icons.phone_android : Icons.sd_storage,
+                                color: isInternal ? Colors.teal : Colors.amber,
+                              ),
+                              title: Text(isInternal ? 'Internal Storage' : 'SD Card / USB'),
+                              subtitle: Text(rootPath, style: const TextStyle(fontSize: 12)),
+                              onTap: () {
+                                ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
+                                ref.read(currentPathProvider.notifier).state = rootPath;
+                                Navigator.pop(ctx);
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      );
+                    },
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+        body: asyncContents.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => Center(child: Text('Error: $err\n\n(Did you grant permissions?)', textAlign: TextAlign.center)),
+          error: (err, stack) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
           data: (files) {
-            if (files.isEmpty) return const Center(child: Text('Empty Directory'));
-            files.sort((a, b) => a.isDirectory == b.isDirectory ? a.path.compareTo(b.path) : (a.isDirectory ? -1 : 1));
+            if (files.isEmpty) {
+              return const Center(child: Text("Empty directory"));
+            }
+
+            // 1. Logic to show the "Go Back" folder at the top
+            final canGoBack = currentPath != '/storage/emulated/0' && currentPath != '/';
+            final itemCount = canGoBack ? files.length + 1 : files.length;
 
             return ListView.builder(
-              itemCount: files.length,
+              itemCount: itemCount,
               itemBuilder: (context, index) {
-                final file = files[index];
+                
+                // ==========================================
+                // RENDER "GO BACK" FOLDER
+                // ==========================================
+                if (canGoBack && index == 0) {
+                  return ListTile(
+                    leading: const Icon(Icons.drive_folder_upload, color: Colors.blueGrey, size: 40),
+                    title: const Text('..'),
+                    subtitle: const Text('Go back'),
+                    onTap: () {
+                      final parent = p.dirname(currentPath);
+                      ref.read(currentPathProvider.notifier).state = parent;
+                    },
+                  );
+                }
+
+                // ==========================================
+                // RENDER FILES & FOLDERS
+                // ==========================================
+                final fileIndex = canGoBack ? index - 1 : index;
+                final file = files[fileIndex];
+                final isDirectory = file.isDirectory;
+
                 return ListTile(
                   leading: Icon(
-                    file.isDirectory ? Icons.folder : _getIconForType(file.type),
-                    color: file.isDirectory ? Colors.amber : Colors.blueGrey,
+                    isDirectory ? Icons.folder : Icons.insert_drive_file,
+                    color: isDirectory ? Colors.amber : Colors.tealAccent,
+                    size: 40,
                   ),
-                  title: Text(currentAdapter is SafStorageAdapter ? Uri.parse(file.path).pathSegments.last : PathUtils.getName(file.path)),
-                  subtitle: Text(file.isDirectory ? 'Folder' : '${(file.size / 1024).toStringAsFixed(2)} KB'),
-                  onTap: () {
-                    if (file.isDirectory) {
+                  title: Text(file.name),
+                  
+                  // Dynamic Info Subtitle
+                  subtitle: isDirectory
+                      ? FutureBuilder<int>(
+                          // Quick background check of folder contents
+                          future: currentAdapter is LocalStorageAdapter 
+                              ? Directory(file.path).list().length 
+                              : Future.value(0), // Skip counting if inside a virtual ZIP
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              return Text('${snapshot.data} items');
+                            }
+                            return const Text('Counting...');
+                          },
+                        )
+                      : Text('${(file.size / 1024).toStringAsFixed(2)} KB'),
+
+                  onTap: () async {
+                    if (isDirectory) {
                       ref.read(currentPathProvider.notifier).state = file.path;
-                    } else if (file.path.toLowerCase().endsWith('.zip') && currentAdapter is! ZipArchiveAdapter) {
-                      ref.read(realParentPathProvider.notifier).state = currentPath;
-                      ref.read(storageAdapterProvider.notifier).state = ZipArchiveAdapter(zipFilePath: file.path);
-                      ref.read(currentPathProvider.notifier).state = '/'; 
                     } else {
-                      final handler = registry.handlerFor(file);
-                      if (handler != null) handler.open(context, file, currentAdapter);
+                      
+                      // Check if it's an archive. 
+                      // If we are on Local Storage, we use the Magic Number reader!
+                      bool isArchive = false;
+                      if (currentAdapter is LocalStorageAdapter) {
+                         isArchive = await ArchiveService.isArchiveFile(file.path);
+                      } else {
+                         // Fallback inside virtual zips
+                         final ext = p.extension(file.path).toLowerCase();
+                         isArchive = (ext == '.zip' || ext == '.apk');
+                      }
+
+                      if (isArchive) {
+                         // (Note: Requires your ZipArchiveAdapter to be imported and active)
+                         // ref.read(realParentPathProvider.notifier).state = currentPath;
+                         // ref.read(storageAdapterProvider.notifier).state = ZipArchiveAdapter(file.path);
+                         // ref.read(currentPathProvider.notifier).state = '/';
+                         
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           const SnackBar(content: Text('Archive viewing logic triggered!'))
+                         );
+                      } else {
+                         ref.read(fileHandlerRegistryProvider).handle(context, file);
+                      }
                     }
                   },
-                  onLongPress: () => _showFileOperationsMenu(context, ref, file),
                 );
               },
             );
@@ -168,70 +184,5 @@ class FileBrowserDebug extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  IconData _getIconForType(FileType type) {
-    switch (type) {
-      case FileType.image: return Icons.image;
-      case FileType.video: return Icons.movie;
-      case FileType.audio: return Icons.audiotrack;
-      case FileType.document: return Icons.description;
-      case FileType.archive: return Icons.archive;
-      default: return Icons.insert_drive_file;
-    }
-  }
-
-  void _showFileOperationsMenu(BuildContext context, WidgetRef ref, FileEntry file) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.copy, color: Colors.blue),
-                title: const Text('Copy File'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _enqueueTask(ref, file, TransferOperation.copy, '${file.path}_copy');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Delete File'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _enqueueTask(ref, file, TransferOperation.delete, '');
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _enqueueTask(WidgetRef ref, FileEntry file, TransferOperation operation, String destPath) {
-    final queue = ref.read(transferQueueProvider);
-    final currentAdapter = ref.read(storageAdapterProvider);
-    
-    // Virtual paths mapped for SAF Adapter writing
-    String finalDest = destPath;
-    if (currentAdapter is SafStorageAdapter && operation == TransferOperation.copy) {
-       final parentUri = ref.read(currentPathProvider);
-       final fileName = '${Uri.parse(file.path).pathSegments.last}_copy';
-       finalDest = 'saf_create|$parentUri|$fileName';
-    }
-
-    final task = TransferTask(
-      id: DateTime.now().millisecondsSinceEpoch.toString(), 
-      sourcePath: file.path,
-      destPath: finalDest,
-      totalBytes: file.size,
-      operation: operation,
-    );
-
-    queue.enqueue(task, currentAdapter, currentAdapter);
-    ScaffoldMessenger.of(ref.context).showSnackBar(SnackBar(content: Text('${operation.name.toUpperCase()} queued.')));
   }
 }
