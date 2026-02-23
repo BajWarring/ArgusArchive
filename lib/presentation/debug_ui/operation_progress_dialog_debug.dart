@@ -1,105 +1,146 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
-enum OperationType { copy, move, extract, compress }
+import '../../services/transfer/transfer_task.dart';
+import 'providers.dart';
 
-class OperationProgressDialogDebug extends StatelessWidget {
-  final OperationType operation;
-  final String currentFile;
-  final double progress; // 0.0 to 1.0
+class OperationProgressDialogDebug extends ConsumerStatefulWidget {
+  final List<String> taskIds;
 
   const OperationProgressDialogDebug({
     super.key,
-    required this.operation,
-    required this.currentFile,
-    required this.progress,
+    required this.taskIds,
   });
 
-  String get _operationName {
+  static Future<void> show(BuildContext context, List<String> taskIds) {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => OperationProgressDialogDebug(taskIds: taskIds),
+    );
+  }
+
+  @override
+  ConsumerState<OperationProgressDialogDebug> createState() => _OperationProgressDialogDebugState();
+}
+
+class _OperationProgressDialogDebugState extends ConsumerState<OperationProgressDialogDebug> {
+  
+  String _getOperationName(TransferOperation operation) {
     switch (operation) {
-      case OperationType.copy: return 'Copying';
-      case OperationType.move: return 'Moving';
-      case OperationType.extract: return 'Extracting';
-      case OperationType.compress: return 'Compressing';
+      case TransferOperation.copy: return 'Copying';
+      case TransferOperation.move: return 'Moving';
+      case TransferOperation.extract: return 'Extracting';
+      case TransferOperation.compress: return 'Compressing';
+      case TransferOperation.delete: return 'Deleting';
     }
   }
 
-  IconData get _operationIcon {
+  IconData _getOperationIcon(TransferOperation operation) {
     switch (operation) {
-      case OperationType.copy: return Icons.copy;
-      case OperationType.move: return Icons.drive_file_move;
-      case OperationType.extract: return Icons.unarchive;
-      case OperationType.compress: return Icons.folder_zip;
+      case TransferOperation.copy: return Icons.copy;
+      case TransferOperation.move: return Icons.drive_file_move;
+      case TransferOperation.extract: return Icons.unarchive;
+      case TransferOperation.compress: return Icons.folder_zip;
+      case TransferOperation.delete: return Icons.delete;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: Row(
-        children: [
-          Icon(_operationIcon, color: Colors.teal),
-          const SizedBox(width: 8),
-          Text('$_operationName...'),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            currentFile,
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 16),
-          LinearProgressIndicator(
-            value: progress,
-            backgroundColor: Colors.teal.withvalues(alpha: 0.2),
-            color: Colors.teal,
-            minHeight: 8,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text('${(progress * 100).toStringAsFixed(1)}%'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            // TODO: Add cancellation logic
-            Navigator.of(context).pop();
-          },
-          child: const Text('Cancel', style: TextStyle(color: Colors.red)),
-        ),
-      ],
-    );
-  }
+    final tasksAsync = ref.watch(queueTasksStreamProvider);
 
-  // Helper method to easily show this dialog
-  static Future<void> show(BuildContext context, OperationType operation, ValueNotifier<double> progressNotifier, ValueNotifier<String> currentFileNotifier) {
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return ValueListenableBuilder<double>(
-          valueListenable: progressNotifier,
-          builder: (context, progress, _) {
-            return ValueListenableBuilder<String>(
-              valueListenable: currentFileNotifier,
-              builder: (context, currentFile, _) {
-                return OperationProgressDialogDebug(
-                  operation: operation,
-                  currentFile: currentFile,
-                  progress: progress,
-                );
-              }
-            );
-          }
+    return tasksAsync.when(
+      loading: () => const AlertDialog(content: SizedBox(height: 50, child: Center(child: CircularProgressIndicator()))),
+      error: (err, stack) => AlertDialog(content: Text('Error: $err')),
+      data: (allTasks) {
+        // Filter the global queue to only show tasks relevant to this dialog's batch
+        final myTasks = allTasks.where((t) => widget.taskIds.contains(t.id)).toList();
+
+        if (myTasks.isEmpty) {
+          return const AlertDialog(content: Text('Initializing...'));
+        }
+
+        // Check if the entire batch is finished
+        final isComplete = myTasks.every((t) => 
+            t.status == TransferStatus.completed || 
+            t.status == TransferStatus.cancelled || 
+            t.status == TransferStatus.failed);
+
+        // Auto-close and refresh when done
+        if (isComplete) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              Navigator.of(context).pop();
+              ref.invalidate(directoryContentsProvider);
+            }
+          });
+        }
+
+        // Find the active task for the filename display
+        final activeTask = myTasks.firstWhere(
+          (t) => t.status == TransferStatus.inProgress,
+          orElse: () => myTasks.firstWhere((t) => t.status == TransferStatus.pending, orElse: () => myTasks.last)
+        );
+
+        // Calculate cumulative progress for the batch
+        final totalBytes = myTasks.fold<int>(0, (sum, t) => sum + t.totalBytes);
+        final transferredBytes = myTasks.fold<int>(0, (sum, t) => sum + t.transferredBytes);
+        final overallProgress = totalBytes == 0 ? 0.0 : transferredBytes / totalBytes;
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Row(
+            children: [
+              Icon(_getOperationIcon(activeTask.operation), color: Colors.teal),
+              const SizedBox(width: 8),
+              Text('${_getOperationName(activeTask.operation)}...'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                p.basename(activeTask.sourcePath),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 16),
+              LinearProgressIndicator(
+                value: overallProgress,
+                backgroundColor: Colors.teal.withValues(alpha: 0.2),
+                color: activeTask.status == TransferStatus.failed ? Colors.red : Colors.teal,
+                minHeight: 8,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('${myTasks.where((t) => t.status == TransferStatus.completed).length} / ${myTasks.length} files'),
+                  Text('${(overallProgress * 100).toStringAsFixed(1)}%'),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            if (!isComplete)
+              TextButton(
+                onPressed: () {
+                  // Cancel all tasks in this batch
+                  final queue = ref.read(transferQueueProvider);
+                  for (var task in myTasks) {
+                    if (task.status == TransferStatus.pending || task.status == TransferStatus.inProgress) {
+                      queue.cancel(task.id);
+                    }
+                  }
+                },
+                child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+              ),
+          ],
         );
       }
     );
