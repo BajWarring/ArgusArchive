@@ -8,7 +8,7 @@ import '../../adapters/local/local_storage_adapter.dart';
 import '../../services/storage/storage_volumes_service.dart';
 import '../../services/operations/archive_service.dart';
 import '../../services/operations/file_operations_service.dart';
-import '../../core/models/file_entry.dart'; // Ensure this points to your FileEntry model
+import '../../core/models/file_entry.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
@@ -135,7 +135,6 @@ class FileBrowserDebug extends ConsumerWidget {
                     color: isDirectory ? Colors.amber : Colors.tealAccent,
                     size: 40,
                   ),
-                  // FIX 1: Use p.basename to get the name directly from the path
                   title: Text(p.basename(file.path)),
                   subtitle: isDirectory
                       ? FutureBuilder<int>(
@@ -164,11 +163,15 @@ class FileBrowserDebug extends ConsumerWidget {
                       final isApk = p.extension(file.path).toLowerCase() == '.apk';
 
                       if (isArchive && context.mounted) {
-                        // FIX 2: Pass the 'file' object directly
                         _showArchiveTapMenu(context, ref, file, isApk: isApk);
                       } else if (context.mounted) {
-                        // FIX 3: Assuming your registry uses '.open'. Change this to '.handle' or '.process' if needed!
-                        ref.read(fileHandlerRegistryProvider).open(context, file);
+                        // FIX: Get the handler first, then open!
+                        final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file);
+                        if (handler != null) {
+                          handler.open(context, file, currentAdapter);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No app found to open this file.')));
+                        }
                       }
                     }
                   },
@@ -181,7 +184,6 @@ class FileBrowserDebug extends ConsumerWidget {
                     final isApk = p.extension(file.path).toLowerCase() == '.apk';
                     
                     if (context.mounted) {
-                      // FIX 2: Pass the 'file' object directly
                       _showLongPressMenu(context, ref, file, isArchive, isApk);
                     }
                   },
@@ -212,8 +214,13 @@ class FileBrowserDebug extends ConsumerWidget {
                 title: const Text('Install APK'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  // FIX 3: Using '.open' and passing the real file object
-                  ref.read(fileHandlerRegistryProvider).open(context, file);
+                  final adapter = ref.read(storageAdapterProvider);
+                  final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file);
+                  if (handler != null) {
+                    handler.open(context, file, adapter);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot install APK.')));
+                  }
                 },
               ),
             ListTile(
@@ -280,8 +287,9 @@ class FileBrowserDebug extends ConsumerWidget {
                   title: const Text('Install'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    // FIX 3: Using '.open' and passing the real file object
-                    ref.read(fileHandlerRegistryProvider).open(context, file);
+                    final adapter = ref.read(storageAdapterProvider);
+                    final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file);
+                    if (handler != null) handler.open(context, file, adapter);
                   },
                 ),
 
@@ -320,8 +328,13 @@ class FileBrowserDebug extends ConsumerWidget {
                   title: const Text('Open'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    // FIX 3: Using '.open'
-                    ref.read(fileHandlerRegistryProvider).open(context, file);
+                    final adapter = ref.read(storageAdapterProvider);
+                    final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file);
+                    if (handler != null) {
+                      handler.open(context, file, adapter);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No app found to open this file.')));
+                    }
                   },
                 ),
 
