@@ -12,7 +12,7 @@ import '../../services/operations/file_operations_service.dart';
 import 'providers.dart';
 import 'header_icons_debug.dart';
 import 'operation_progress_dialog_debug.dart';
-import 'file_dialogs_debug.dart';
+import 'file_dialog_debug.dart';
 
 class FileActionHandlerDebug {
   
