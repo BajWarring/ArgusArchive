@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_storage/shared_storage.dart' as saf_plugin;
 import '../../adapters/local/local_storage_adapter.dart';
 import '../../adapters/android/saf_storage_adapter.dart';
 import '../../adapters/virtual/zip_archive_adapter.dart';
