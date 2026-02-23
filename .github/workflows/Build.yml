@@ -1,7 +1,7 @@
 name: 2. Build APK
 
 on:
-  workflow_dispatch: # Manual trigger only
+  workflow_dispatch:
 
 jobs:
   build:
@@ -30,34 +30,41 @@ jobs:
         with:
           flutter-version: '3.27.4'
 
+      # ✅ Decode keystore from secrets
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+
+      # ✅ Create key.properties for Gradle signing
+      - name: Create key.properties
+        run: |
+          echo "storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=argus-keystore.jks" >> android/key.properties
+
       - name: Get Dependencies
         run: flutter pub get
 
-      # ✅ Static analysis step added
       - name: Analyze Project
         run: flutter analyze
 
-            # 🔥 NEW STEP: Patch the broken shared_storage package directly in the cache
+      # 🔥 Patch shared_storage plugin for AGP 8
       - name: Patch shared_storage plugin for AGP 8
         run: |
-          # Find the exact paths to the cached package files
           GRADLE_FILE=$(ls ~/.pub-cache/hosted/pub.dev/shared_storage*/android/build.gradle | head -n 1)
           MANIFEST_FILE=$(ls ~/.pub-cache/hosted/pub.dev/shared_storage*/android/src/main/AndroidManifest.xml | head -n 1)
-          
+
           echo "Patching Gradle file: $GRADLE_FILE"
           echo "Patching Manifest file: $MANIFEST_FILE"
-          
-          # 1. Update SDK to 35 to fix the lStar AAPT error
+
           sed -i 's/compileSdkVersion 30/compileSdkVersion 35/g' "$GRADLE_FILE"
-          
-          # 2. Inject the EXACT correct namespace to fix the AGP 8 crash
           sed -i '/android {/a \    namespace "io.alexrintt.sharedstorage"' "$GRADLE_FILE"
-          
-          # 3. Strip the legacy package attribute from the Manifest so AGP 8 doesn't complain
           sed -i 's/package="io.alexrintt.sharedstorage"//g' "$MANIFEST_FILE"
 
+      # ✅ Build with automatic versionCode
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --build-number=${{ github.run_number }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
