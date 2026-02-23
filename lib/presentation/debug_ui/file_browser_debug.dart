@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-
+import '../../core/enums/file_type.dart';
 import 'providers.dart';
 import 'search_debug.dart';
 import '../../adapters/local/local_storage_adapter.dart';
@@ -216,10 +216,11 @@ class FileBrowserDebug extends ConsumerWidget {
                     const PopupMenuItem(value: 'new_folder', child: Row(children: [Icon(Icons.create_new_folder), SizedBox(width: 8), Text('New Folder')])),
                     const PopupMenuItem(value: 'new_file', child: Row(children: [Icon(Icons.note_add), SizedBox(width: 8), Text('New File')])),
                     const PopupMenuDivider(),
-                    PopupMenuItem(
-                      child: const Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+                    const PopupMenuItem(
                       enabled: false,
+                      child: Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
                     ),
+
                     PopupMenuItem(value: 'sort_name', child: _buildSortItem('Name', sType == FileSortType.name)),
                     PopupMenuItem(value: 'sort_size', child: _buildSortItem('Size', sType == FileSortType.size)),
                     PopupMenuItem(value: 'sort_date', child: _buildSortItem('Date', sType == FileSortType.date)),
