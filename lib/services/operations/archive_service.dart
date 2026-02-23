@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'; // Added for debugPrint
 import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 
@@ -11,7 +11,7 @@ class ArchiveService {
       await compute(_extractIsolate, {'zipPath': zipPath, 'destDir': destDirPath});
       return true;
     } catch (e) {
-      print("Extract error: $e");
+      debugPrint("Extract error: $e"); // Changed to debugPrint
       return false;
     }
   }
@@ -39,7 +39,7 @@ class ArchiveService {
       await compute(_compressIsolate, {'source': sourcePath, 'dest': zipDestPath});
       return true;
     } catch (e) {
-      print("Compress error: $e");
+      debugPrint("Compress error: $e"); // Changed to debugPrint
       return false;
     }
   }
