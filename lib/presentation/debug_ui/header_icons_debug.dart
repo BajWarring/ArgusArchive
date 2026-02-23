@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'providers.dart';
 import 'search_debug.dart';
 
 enum FileSortType { name, size, date, type }
