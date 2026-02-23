@@ -39,7 +39,6 @@ class IndexDb {
     final name = p.basename(entry.path);
 
     await db.delete('file_index', where: 'id = ?', whereArgs: [entry.id]);
-
     await db.insert('file_index', {
       'id': entry.id,
       'path': entry.path,
@@ -60,16 +59,17 @@ class IndexDb {
     final db = _db;
     if (db == null) throw Exception('Database not initialized');
 
-    if (query.trim().isEmpty) return [];
+    final searchTerm = query.trim();
+    if (searchTerm.isEmpty) return [];
 
-    final sanitizedQuery = '${query.replaceAll(RegExp(r'[^\w\s]'), '')}*';
-
+    // FIX: Replaced FTS MATCH with standard LIKE. 
+    // This allows safe searching for symbols like '.pdf', '-', or '(copy)' 
+    // without crashing the SQLite engine.
     final List<Map<String, dynamic>> maps = await db.rawQuery('''
       SELECT * FROM file_index 
-      WHERE file_index MATCH ? 
-      ORDER BY rank
-      LIMIT 100
-    ''', [sanitizedQuery]);
+      WHERE name LIKE ? OR path LIKE ?
+      LIMIT 150
+    ''', ['%$searchTerm%', '%$searchTerm%']);
 
     return maps.map((map) {
       return FileEntry(
