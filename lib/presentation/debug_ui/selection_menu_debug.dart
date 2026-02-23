@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,6 +15,16 @@ class SelectionMenuDebug extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncContents = ref.watch(directoryContentsProvider);
+    final selectedFiles = ref.watch(selectedFilesProvider);
+    
+    // Check if any selected item is a directory
+    bool hasDirectorySelected = false;
+    for (String path in selectedFiles) {
+      if (FileSystemEntity.isDirectorySync(path)) {
+        hasDirectorySelected = true;
+        break;
+      }
+    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -21,7 +32,7 @@ class SelectionMenuDebug extends ConsumerWidget {
         PopupMenuButton<String>(
           icon: const Icon(Icons.checklist),
           tooltip: 'Selection Options',
-                    onSelected: (val) {
+          onSelected: (val) {
             final allFiles = asyncContents.value?.where((e) => e.path != '..').map((e) => e.path).toSet() ?? {};
             if (val == 'all') {
               ref.read(selectedFilesProvider.notifier).state = allFiles;
@@ -32,7 +43,6 @@ class SelectionMenuDebug extends ConsumerWidget {
               ref.read(selectedFilesProvider.notifier).state = allFiles.difference(current);
             }
           },
-
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'all', child: Text('Select All')),
             const PopupMenuItem(value: 'none', child: Text('Deselect All')),
@@ -48,7 +58,11 @@ class SelectionMenuDebug extends ConsumerWidget {
             const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
             const PopupMenuDivider(),
             const PopupMenuItem(value: 'compress', child: Row(children: [Icon(Icons.folder_zip), SizedBox(width: 8), Text('Compress')])),
-            const PopupMenuItem(value: 'share', child: Row(children: [Icon(Icons.share), SizedBox(width: 8), Text('Share')])),
+            
+            // Only show Share if NO directories are selected
+            if (!hasDirectorySelected)
+              const PopupMenuItem(value: 'share', child: Row(children: [Icon(Icons.share), SizedBox(width: 8), Text('Share')])),
+              
             const PopupMenuItem(value: 'details', child: Row(children: [Icon(Icons.info_outline), SizedBox(width: 8), Text('Details')])),
           ],
         ),
