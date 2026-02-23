@@ -481,7 +481,7 @@ class FileBrowserDebug extends ConsumerWidget {
                   ref.read(selectedFilesProvider.notifier).state = {};
                 },
               ),
-              ListTile(
+                ListTile(
                 leading: const Icon(Icons.folder_zip, color: Colors.teal),
                 title: Text(isSelectionMode ? 'Compress ${targetPaths.length} items to ZIP' : 'Compress to ZIP'),
                 onTap: () async {
@@ -490,6 +490,7 @@ class FileBrowserDebug extends ConsumerWidget {
                   final zipName = await _showZipNameDialog(context, defaultName);
                   
                   if (zipName != null && zipName.isNotEmpty) {
+                    if (!context.mounted) return; // <--- ADD THIS EXACT LINE
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compressing...')));
                     final zipDest = p.join(p.dirname(filePath), '$zipName.zip');
                     await ArchiveService.compressEntities(targetPaths, zipDest);
@@ -498,6 +499,7 @@ class FileBrowserDebug extends ConsumerWidget {
                   }
                 },
               ),
+
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: Text(isSelectionMode ? 'Delete ${targetPaths.length} items' : 'Delete', style: const TextStyle(color: Colors.red)),
