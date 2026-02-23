@@ -1,5 +1,4 @@
 import 'package:flutter/services.dart';
-import 'dart:typed_data';
 
 class ApkIconService {
   static const MethodChannel _channel = MethodChannel('com.app.argusarchive/apk_icon');
