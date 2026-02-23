@@ -8,7 +8,7 @@ import '../../adapters/virtual/zip_archive_adapter.dart';
 import '../../services/operations/archive_service.dart';
 
 import 'providers.dart';
-import 'file_dialogs_debug.dart';
+import 'file_dialog_debug.dart';
 import 'file_action_handler_debug.dart';
 
 class FileBottomSheetsDebug {
