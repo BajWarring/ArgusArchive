@@ -8,6 +8,7 @@ import '../../adapters/local/local_storage_adapter.dart';
 import '../../services/storage/storage_volumes_service.dart';
 import '../../services/operations/archive_service.dart';
 import '../../services/operations/file_operations_service.dart';
+import '../../core/models/file_entry.dart'; // Ensure this points to your FileEntry model
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
@@ -83,9 +84,6 @@ class FileBrowserDebug extends ConsumerWidget {
           ],
         ),
 
-        // ==========================================
-        // DYNAMIC FLOATING ACTION BUTTON
-        // ==========================================
         floatingActionButton: clipboard.action != ClipboardAction.none && clipboard.paths.isNotEmpty
             ? FloatingActionButton.extended(
                 backgroundColor: clipboard.action == ClipboardAction.extract ? Colors.orange : Colors.teal,
@@ -137,7 +135,8 @@ class FileBrowserDebug extends ConsumerWidget {
                     color: isDirectory ? Colors.amber : Colors.tealAccent,
                     size: 40,
                   ),
-                  title: Text(file.name),
+                  // FIX 1: Use p.basename to get the name directly from the path
+                  title: Text(p.basename(file.path)),
                   subtitle: isDirectory
                       ? FutureBuilder<int>(
                           future: currentAdapter is LocalStorageAdapter
@@ -150,9 +149,6 @@ class FileBrowserDebug extends ConsumerWidget {
                         )
                       : Text('${(file.size / 1024).toStringAsFixed(2)} KB'),
 
-                  // ==========================================
-                  // TAP (CLICK) HANDLER
-                  // ==========================================
                   onTap: () async {
                     if (isDirectory) {
                       ref.read(currentPathProvider.notifier).state = file.path;
@@ -168,16 +164,15 @@ class FileBrowserDebug extends ConsumerWidget {
                       final isApk = p.extension(file.path).toLowerCase() == '.apk';
 
                       if (isArchive && context.mounted) {
-                        _showArchiveTapMenu(context, ref, file.path, isApk: isApk);
+                        // FIX 2: Pass the 'file' object directly
+                        _showArchiveTapMenu(context, ref, file, isApk: isApk);
                       } else if (context.mounted) {
-                        ref.read(fileHandlerRegistryProvider).handle(context, file);
+                        // FIX 3: Assuming your registry uses '.open'. Change this to '.handle' or '.process' if needed!
+                        ref.read(fileHandlerRegistryProvider).open(context, file);
                       }
                     }
                   },
 
-                  // ==========================================
-                  // HOLD (LONG PRESS) HANDLER
-                  // ==========================================
                   onLongPress: () async {
                     bool isArchive = false;
                     if (!isDirectory && currentAdapter is LocalStorageAdapter) {
@@ -186,7 +181,8 @@ class FileBrowserDebug extends ConsumerWidget {
                     final isApk = p.extension(file.path).toLowerCase() == '.apk';
                     
                     if (context.mounted) {
-                      _showLongPressMenu(context, ref, file.path, isDirectory, isArchive, isApk);
+                      // FIX 2: Pass the 'file' object directly
+                      _showLongPressMenu(context, ref, file, isArchive, isApk);
                     }
                   },
                 );
@@ -201,7 +197,8 @@ class FileBrowserDebug extends ConsumerWidget {
   // ==========================================
   // ARCHIVE & APK TAP MENU
   // ==========================================
-  void _showArchiveTapMenu(BuildContext context, WidgetRef ref, String filePath, {required bool isApk}) {
+  void _showArchiveTapMenu(BuildContext context, WidgetRef ref, FileEntry file, {required bool isApk}) {
+    final filePath = file.path;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -215,8 +212,8 @@ class FileBrowserDebug extends ConsumerWidget {
                 title: const Text('Install APK'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  // Delegate to your file handler to open Android Package Installer
-                  ref.read(fileHandlerRegistryProvider).handle(context, FileEntry(path: filePath, name: p.basename(filePath), size: 0, lastModified: DateTime.now(), isDirectory: false));
+                  // FIX 3: Using '.open' and passing the real file object
+                  ref.read(fileHandlerRegistryProvider).open(context, file);
                 },
               ),
             ListTile(
@@ -225,8 +222,6 @@ class FileBrowserDebug extends ConsumerWidget {
               onTap: () {
                 Navigator.pop(ctx);
                 ref.read(realParentPathProvider.notifier).state = ref.read(currentPathProvider);
-                // ref.read(storageAdapterProvider.notifier).state = ZipArchiveAdapter(filePath);
-                // ref.read(currentPathProvider.notifier).state = '/';
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Viewing Archive...')));
               },
             ),
@@ -247,7 +242,6 @@ class FileBrowserDebug extends ConsumerWidget {
               subtitle: const Text('Choose a different folder'),
               onTap: () {
                 Navigator.pop(ctx);
-                // Trigger the new Extract Navigation Workflow
                 ref.read(clipboardProvider.notifier).state = ClipboardState(paths: [filePath], action: ClipboardAction.extract);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Navigate to destination and tap Extract Here')));
               },
@@ -261,7 +255,10 @@ class FileBrowserDebug extends ConsumerWidget {
   // ==========================================
   // DYNAMIC LONG PRESS MENU
   // ==========================================
-  void _showLongPressMenu(BuildContext context, WidgetRef ref, String filePath, bool isDirectory, bool isArchive, bool isApk) {
+  void _showLongPressMenu(BuildContext context, WidgetRef ref, FileEntry file, bool isArchive, bool isApk) {
+    final filePath = file.path;
+    final isDirectory = file.isDirectory;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -283,7 +280,8 @@ class FileBrowserDebug extends ConsumerWidget {
                   title: const Text('Install'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    ref.read(fileHandlerRegistryProvider).handle(context, FileEntry(path: filePath, name: p.basename(filePath), size: 0, lastModified: DateTime.now(), isDirectory: false));
+                    // FIX 3: Using '.open' and passing the real file object
+                    ref.read(fileHandlerRegistryProvider).open(context, file);
                   },
                 ),
 
@@ -316,13 +314,14 @@ class FileBrowserDebug extends ConsumerWidget {
                 ),
               ],
 
-              if (!isDirectory)
+              if (!isDirectory && !isApk && !isArchive)
                 ListTile(
                   leading: const Icon(Icons.open_in_new),
                   title: const Text('Open'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    ref.read(fileHandlerRegistryProvider).handle(context, FileEntry(path: filePath, name: p.basename(filePath), size: 0, lastModified: DateTime.now(), isDirectory: false));
+                    // FIX 3: Using '.open'
+                    ref.read(fileHandlerRegistryProvider).open(context, file);
                   },
                 ),
 
@@ -398,16 +397,14 @@ class FileBrowserDebug extends ConsumerWidget {
   Future<void> _handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
     final clipboard = ref.read(clipboardProvider);
     
-    // 1. Handle Extract Action
     if (clipboard.action == ClipboardAction.extract) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Extracting...')));
       await ArchiveService.extractZip(clipboard.paths.first, destDir);
-      ref.read(clipboardProvider.notifier).state = ClipboardState(); // Clear memory
+      ref.read(clipboardProvider.notifier).state = ClipboardState();
       ref.invalidate(directoryContentsProvider);
       return;
     }
 
-    // 2. Handle Copy / Cut Actions
     for (String sourcePath in clipboard.paths) {
       bool success;
       if (clipboard.action == ClipboardAction.copy) {
