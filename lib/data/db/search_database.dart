@@ -12,22 +12,27 @@ class SearchDatabase {
     if (_db != null) return;
 
     final Directory docDir = await getApplicationDocumentsDirectory();
-    final String path = p.join(docDir.path, 'argus_fts5_search.db');
+    // Renamed the database file to start fresh and avoid conflicts with the broken FTS5 DB
+    final String path = p.join(docDir.path, 'argus_fts4_search.db'); 
 
     _db = await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        // High-performance FTS5 table with unicode61 for diacritics/case-insensitivity
+        // High-compatibility FTS4 fallback
         await db.execute('''
-          CREATE VIRTUAL TABLE file_index USING fts5(
-            id UNINDEXED, 
+          CREATE VIRTUAL TABLE file_index USING fts4(
+            id, 
             path, 
             name, 
-            type UNINDEXED, 
-            size UNINDEXED, 
-            modifiedAt UNINDEXED,
-            tokenize="unicode61 remove_diacritics 1"
+            type, 
+            size, 
+            modifiedAt,
+            notindexed=id,
+            notindexed=type,
+            notindexed=size,
+            notindexed=modifiedAt,
+            tokenize=unicode61
           );
         ''');
       },
@@ -38,7 +43,6 @@ class SearchDatabase {
     final db = _db;
     if (db == null) throw Exception('Database not initialized');
 
-    // Batch updates for massive performance gains
     final batch = db.batch();
     for (var entry in entries) {
       final name = p.basename(entry.path);
@@ -73,13 +77,11 @@ class SearchDatabase {
     final cleanQuery = query.trim().replaceAll(RegExp(r'[^\w\s]'), '');
     if (cleanQuery.isEmpty) return [];
 
-    // Append '*' for prefix matching (e.g., 'and' matches 'android')
-    final ftsQuery = cleanQuery.split(' ').map((word) => '$word*').join(' AND ');
+    // FTS4 Prefix matching syntax (space separated instead of AND)
+    final ftsQuery = cleanQuery.split(' ').map((word) => '$word*').join(' ');
 
-    // BM25 Ranking: Weight 'name' column (index 2) much heavier than 'path' (index 1)
     String sql = '''
-      SELECT *, bm25(file_index, 0, 1.0, 10.0, 0, 0, 0) as rank 
-      FROM file_index 
+      SELECT * FROM file_index 
       WHERE file_index MATCH ?
     ''';
     
@@ -94,7 +96,7 @@ class SearchDatabase {
       args.add(minSize);
     }
 
-    sql += ' ORDER BY rank LIMIT 100';
+    sql += ' LIMIT 100';
 
     final List<Map<String, dynamic>> maps = await db.rawQuery(sql, args);
 
