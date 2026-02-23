@@ -6,7 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
-import '../../services/operations/archive_service.dart';
+import '../../services/transfer/transfer_task.dart';
 import '../../services/operations/file_operations_service.dart';
 
 import 'providers.dart';
@@ -27,6 +27,9 @@ class FileActionHandlerDebug {
   }
 
   static void handleBulkActions(BuildContext context, WidgetRef ref, String action, List<String> paths) async {
+    final queue = ref.read(transferQueueProvider);
+    final currentAdapter = ref.read(storageAdapterProvider);
+
     if (action == 'copy') {
       ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.copy);
       ref.read(selectedFilesProvider.notifier).state = {};
@@ -38,19 +41,31 @@ class FileActionHandlerDebug {
     } else if (action == 'compress') {
       final defaultName = paths.length == 1 ? p.basenameWithoutExtension(paths.first) : 'Archive';
       final zipName = await FileDialogsDebug.showZipNameDialog(context, defaultName);
-      if (zipName != null && zipName.isNotEmpty) {
-        if (!context.mounted) return;
-        
-        final progressNotifier = ValueNotifier<double>(0.0);
-        final fileNotifier = ValueNotifier<String>('Initializing...');
-        OperationProgressDialogDebug.show(context, OperationType.compress, progressNotifier, fileNotifier);
-
+      
+      if (zipName != null && zipName.isNotEmpty && context.mounted) {
         final zipDest = p.join(p.dirname(paths.first), '$zipName.zip');
-        await ArchiveService.compressEntities(paths, zipDest);
-        
-        if (context.mounted) Navigator.of(context).pop();
+        List<String> queuedTaskIds = [];
+
+        // Note: The backend TransferWorker _handleCompress currently compresses a single source path. 
+        // For multi-select, we map them as individual zip tasks or handle via ArchiveService directly.
+        // Assuming we are adapting this to the queue:
+        for (int i = 0; i < paths.length; i++) {
+          final stat = await FileStat.stat(paths[i]);
+          final dest = paths.length == 1 ? zipDest : p.join(p.dirname(paths.first), '${p.basenameWithoutExtension(paths[i])}.zip');
+          
+          final task = TransferTask(
+            id: 'compress_${DateTime.now().millisecondsSinceEpoch}_$i',
+            sourcePath: paths[i],
+            destPath: dest,
+            totalBytes: stat.size,
+            operation: TransferOperation.compress,
+          );
+          queue.enqueue(task, currentAdapter, currentAdapter);
+          queuedTaskIds.add(task.id);
+        }
+
+        OperationProgressDialogDebug.show(context, queuedTaskIds);
         ref.read(selectedFilesProvider.notifier).state = {};
-        ref.invalidate(directoryContentsProvider);
       }
     } else if (action == 'share') {
        final xFiles = paths.map((path) => XFile(path)).toList();
@@ -89,90 +104,86 @@ class FileActionHandlerDebug {
 
   static Future<void> handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
     final clipboard = ref.read(clipboardProvider);
+    final queue = ref.read(transferQueueProvider);
+    final currentAdapter = ref.read(storageAdapterProvider);
     
-    final progressNotifier = ValueNotifier<double>(0.0);
-    final fileNotifier = ValueNotifier<String>('Initializing...');
-    
+    List<String> queuedTaskIds = [];
+
+    // --- HANDLE EXTRACTION TO QUEUE ---
     if (clipboard.action == ClipboardAction.extract) {
-      OperationProgressDialogDebug.show(context, OperationType.extract, progressNotifier, fileNotifier);
-      
       final zipPath = clipboard.paths.first;
-      final tempExtractDir = p.join(destDir, '.temp_extract_${DateTime.now().millisecondsSinceEpoch}');
-      await Directory(tempExtractDir).create();
+      final stat = await FileStat.stat(zipPath);
       
-      bool success = await ArchiveService.extractZip(zipPath, tempExtractDir);
+      final task = TransferTask(
+        id: 'extract_${DateTime.now().millisecondsSinceEpoch}',
+        sourcePath: zipPath,
+        destPath: destDir,
+        totalBytes: stat.size,
+        operation: TransferOperation.extract,
+      );
       
-      if (success && context.mounted) {
-         final tempEntities = Directory(tempExtractDir).listSync();
-         List<String> tempPaths = tempEntities.map((e) => e.path).toList();
-         
-         bool applyToAll = false;
-         String? bulkAction;
-         for (int i = 0; i < tempPaths.length; i++) {
-            String sourcePath = tempPaths[i];
-            
-            progressNotifier.value = i / tempPaths.length;
-            fileNotifier.value = p.basename(sourcePath);
-
-            bool moveSuccess = await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: false);
-            if (!moveSuccess && context.mounted) {
-                 String action;
-                 if (applyToAll && bulkAction != null) { action = bulkAction; } 
-                 else {
-                   final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
-                   if (result == null) break; 
-                   action = result['action'];
-                   if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
-                 }
-                 if (action == 'skip') { continue; } 
-                 else if (action == 'replace') { await FileOperationsService.deleteEntity(p.join(destDir, p.basename(sourcePath))); await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: false); } 
-                 else if (action == 'rename') { await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: true); }
-            }
-         }
-      }
+      queue.enqueue(task, currentAdapter, currentAdapter);
+      queuedTaskIds.add(task.id);
       
-      if (Directory(tempExtractDir).existsSync()) await Directory(tempExtractDir).delete(recursive: true);
-      if (context.mounted) Navigator.of(context).pop();
-
+      if (context.mounted) OperationProgressDialogDebug.show(context, queuedTaskIds);
       ref.read(clipboardProvider.notifier).state = ClipboardState();
-      ref.invalidate(directoryContentsProvider);
       return;
     }
 
-    OperationType opType = clipboard.action == ClipboardAction.copy ? OperationType.copy : OperationType.move;
-    OperationProgressDialogDebug.show(context, opType, progressNotifier, fileNotifier);
-
+    // --- HANDLE COPY/MOVE TO QUEUE ---
     bool applyToAll = false;
     String? bulkAction;
+    
     for (int i = 0; i < clipboard.paths.length; i++) {
       String sourcePath = clipboard.paths[i];
-      
-      progressNotifier.value = i / clipboard.paths.length;
-      fileNotifier.value = p.basename(sourcePath);
+      String originalName = p.basename(sourcePath);
+      String targetPath = p.join(destDir, originalName);
 
-      if (clipboard.action == ClipboardAction.copy) {
-        await FileOperationsService.copyEntity(sourcePath, destDir, autoRename: true);
-      } else if (clipboard.action == ClipboardAction.cut) {
-        bool success = await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: false);
-        if (!success && context.mounted) {
-          String action;
-          if (applyToAll && bulkAction != null) { action = bulkAction; } 
-          else {
-            final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
-            if (result == null) break; 
-            action = result['action'];
-            if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
-          }
-          if (action == 'skip') { continue; } 
-          else if (action == 'replace') { await FileOperationsService.deleteEntity(p.join(destDir, p.basename(sourcePath))); await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: false); } 
-          else if (action == 'rename') { await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: true); }
+      // 1. Collision Check
+      if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
+        String action;
+        if (applyToAll && bulkAction != null) { 
+          action = bulkAction; 
+        } else {
+          final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
+          if (result == null) break; // User hit cancel
+          action = result['action'];
+          if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
+        }
+        
+        if (action == 'skip') { 
+          continue; 
+        } else if (action == 'replace') { 
+          await FileOperationsService.deleteEntity(targetPath); // Make room for the new file
+        } else if (action == 'rename') { 
+          targetPath = clipboard.action == ClipboardAction.copy 
+            ? FileOperationsService.getCopyUniquePath(destDir, originalName)
+            : FileOperationsService.getRenameUniquePath(destDir, originalName);
         }
       }
+
+      // 2. Build the Task
+      final stat = await FileStat.stat(sourcePath);
+      final task = TransferTask(
+        id: 'transfer_${DateTime.now().millisecondsSinceEpoch}_$i',
+        sourcePath: sourcePath,
+        destPath: targetPath,
+        totalBytes: stat.size,
+        operation: clipboard.action == ClipboardAction.copy ? TransferOperation.copy : TransferOperation.move,
+      );
+
+      // 3. Enqueue
+      queue.enqueue(task, currentAdapter, currentAdapter);
+      queuedTaskIds.add(task.id);
     }
     
-    if (context.mounted) Navigator.of(context).pop();
+    // Show the active progress dialog bound to these specific tasks
+    if (queuedTaskIds.isNotEmpty && context.mounted) {
+       OperationProgressDialogDebug.show(context, queuedTaskIds);
+    }
     
-    if (clipboard.action == ClipboardAction.cut || clipboard.action == ClipboardAction.copy) ref.read(clipboardProvider.notifier).state = ClipboardState();
-    ref.invalidate(directoryContentsProvider);
+    if (clipboard.action == ClipboardAction.cut || clipboard.action == ClipboardAction.copy) {
+      ref.read(clipboardProvider.notifier).state = ClipboardState();
+    }
   }
 }
