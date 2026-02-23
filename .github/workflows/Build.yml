@@ -50,8 +50,13 @@ jobs:
         run: flutter analyze
 
       # 🔥 Patch share_plus plugin for JVM target 17
-      - name: Patch Java and Kotlin to Version 17
+      - name: Force Java 17 Compatibility across all Gradle files
         run: |
+          # 1. Update the app-level build.gradle to Java 17
+          sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' android/app/build.gradle
+          sed -i "s/jvmTarget = '1.8'/jvmTarget = '17'/g" android/app/build.gradle
+          
+          # 2. Force all external plugins to use Java 17
           cat <<EOF >> android/build.gradle
           
           allprojects {
