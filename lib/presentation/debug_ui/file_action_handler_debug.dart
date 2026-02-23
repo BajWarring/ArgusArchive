@@ -1,107 +1,3 @@
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:share_plus/share_plus.dart';
-
-import '../../core/models/file_entry.dart';
-import '../../core/enums/file_type.dart';
-import '../../services/transfer/transfer_task.dart';
-import '../../services/operations/file_operations_service.dart';
-
-import 'providers.dart';
-import 'header_icons_debug.dart';
-import 'operation_progress_dialog_debug.dart';
-import 'file_dialog_debug.dart';
-
-class FileActionHandlerDebug {
-  
-  static Future<List<FileEntry>> getEntriesFromPaths(List<String> paths, dynamic currentAdapter) async {
-    List<FileEntry> entries = [];
-    for (String path in paths) {
-      bool isDir = await FileSystemEntity.isDirectory(path);
-      final stat = await FileStat.stat(path);
-      entries.add(FileEntry(id: path, path: path, type: isDir ? FileType.dir : FileType.unknown, size: stat.size, modifiedAt: stat.modified));
-    }
-    return entries;
-  }
-
-  static void handleBulkActions(BuildContext context, WidgetRef ref, String action, List<String> paths) async {
-    final queue = ref.read(transferQueueProvider);
-    final currentAdapter = ref.read(storageAdapterProvider);
-
-    if (action == 'copy') {
-      ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.copy);
-      ref.read(selectedFilesProvider.notifier).state = {};
-    } else if (action == 'cut') {
-      ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.cut);
-      ref.read(selectedFilesProvider.notifier).state = {};
-    } else if (action == 'delete') {
-      FileDialogsDebug.showDeleteConfirmation(context, ref, paths);
-    } else if (action == 'compress') {
-      final defaultName = paths.length == 1 ? p.basenameWithoutExtension(paths.first) : 'Archive';
-      final zipName = await FileDialogsDebug.showZipNameDialog(context, defaultName);
-      
-      if (zipName != null && zipName.isNotEmpty) {
-        final zipDest = p.join(p.dirname(paths.first), '$zipName.zip');
-        List<String> queuedTaskIds = [];
-
-        for (int i = 0; i < paths.length; i++) {
-          final stat = await FileStat.stat(paths[i]);
-          final dest = paths.length == 1 ? zipDest : p.join(p.dirname(paths.first), '${p.basenameWithoutExtension(paths[i])}.zip');
-          
-          final task = TransferTask(
-            id: 'compress_${DateTime.now().millisecondsSinceEpoch}_$i',
-            sourcePath: paths[i],
-            destPath: dest,
-            totalBytes: stat.size,
-            operation: TransferOperation.compress,
-          );
-          queue.enqueue(task, currentAdapter, currentAdapter);
-          queuedTaskIds.add(task.id);
-        }
-
-        // --- CONTEXT SAFETY CHECK ---
-        if (!context.mounted) return;
-        
-        OperationProgressDialogDebug.show(context, queuedTaskIds);
-        ref.read(selectedFilesProvider.notifier).state = {};
-      }
-    } else if (action == 'share') {
-       final xFiles = paths.map((path) => XFile(path)).toList();
-       await Share.shareXFiles(xFiles, text: 'Shared via Argus Archive');
-       ref.read(selectedFilesProvider.notifier).state = {};
-    } else if (action == 'details') {
-      final entries = await getEntriesFromPaths(paths, ref.read(storageAdapterProvider));
-      if (context.mounted) FileDialogsDebug.showDetailsDialog(context, entries);
-    }
-  }
-
-  static void handleNormalMenu(BuildContext context, WidgetRef ref, String value, String currentPath) async {
-    if (value.startsWith('sort_')) {
-      final map = {'sort_name': FileSortType.name, 'sort_size': FileSortType.size, 'sort_date': FileSortType.date, 'sort_type': FileSortType.type};
-      ref.read(fileSortProvider.notifier).state = map[value]!;
-    } else if (value.startsWith('order_')) {
-      ref.read(fileSortOrderProvider.notifier).state = value == 'order_asc' ? FileSortOrder.ascending : FileSortOrder.descending;
-    } else if (value == 'index') {
-      final indexer = await ref.read(indexServiceProvider.future);
-      await indexer.start(rootPath: '/storage/emulated/0', rebuild: true);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started!')));
-    } else if (value == 'new_folder' || value == 'new_file') {
-      final isFolder = value == 'new_folder';
-      final name = await FileDialogsDebug.showCreateDialog(context, isFolder ? 'New Folder' : 'New File');
-      if (name != null && name.isNotEmpty) {
-        final newPath = p.join(currentPath, name);
-        if (isFolder) {
-          await Directory(newPath).create();
-        } else {
-          await File(newPath).create();
-        }
-        ref.invalidate(directoryContentsProvider);
-      }
-    }
-  }
-
   static Future<void> handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
     final clipboard = ref.read(clipboardProvider);
     final queue = ref.read(transferQueueProvider);
@@ -109,28 +5,67 @@ class FileActionHandlerDebug {
     
     List<String> queuedTaskIds = [];
 
-    // --- HANDLE EXTRACTION TO QUEUE ---
+    // --- HANDLE EXTRACTION ---
     if (clipboard.action == ClipboardAction.extract) {
       final zipPath = clipboard.paths.first;
-      final stat = await FileStat.stat(zipPath);
       
-      final task = TransferTask(
-        id: 'extract_${DateTime.now().millisecondsSinceEpoch}',
-        sourcePath: zipPath,
-        destPath: destDir,
-        totalBytes: stat.size,
-        operation: TransferOperation.extract,
-      );
+      // We extract to a hidden temp folder first
+      final tempExtractDir = p.join(destDir, '.temp_extract_${DateTime.now().millisecondsSinceEpoch}');
+      await Directory(tempExtractDir).create();
       
-      queue.enqueue(task, currentAdapter, currentAdapter);
-      queuedTaskIds.add(task.id);
+      bool success = await ArchiveService.extractZip(zipPath, tempExtractDir);
       
-      if (context.mounted) OperationProgressDialogDebug.show(context, queuedTaskIds);
+      if (success && context.mounted) {
+         // Recursive list gets ALL files, avoiding folder-level overwrite blocks
+         final allExtractedFiles = Directory(tempExtractDir).listSync(recursive: true).whereType<File>().toList();
+         
+         bool applyToAll = false;
+         String? bulkAction;
+
+         for (var tempFile in allExtractedFiles) {
+            // Calculate where this specific file belongs in the final destination
+            final relativePath = p.relative(tempFile.path, from: tempExtractDir);
+            String finalPath = p.join(destDir, relativePath);
+            
+            // Ensure parent directories exist
+            await Directory(p.dirname(finalPath)).create(recursive: true);
+
+            // File-level collision check
+            if (File(finalPath).existsSync()) {
+                 String action;
+                 if (applyToAll && bulkAction != null) { 
+                   action = bulkAction; 
+                 } else {
+                   if (!context.mounted) return;
+                   final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, tempFile.path);
+                   if (result == null) break; 
+                   action = result['action'];
+                   if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
+                 }
+                 
+                 if (action == 'skip') { 
+                   continue; 
+                 } else if (action == 'replace') { 
+                   await File(finalPath).delete(); 
+                 } else if (action == 'rename') { 
+                   finalPath = FileOperationsService.getRenameUniquePath(p.dirname(finalPath), p.basename(finalPath));
+                 }
+            }
+            
+            // Move the individual file
+            await tempFile.rename(finalPath);
+         }
+      }
+      
+      // Cleanup temp folder
+      if (Directory(tempExtractDir).existsSync()) await Directory(tempExtractDir).delete(recursive: true);
+      
       ref.read(clipboardProvider.notifier).state = ClipboardState();
+      ref.invalidate(directoryContentsProvider);
       return;
     }
 
-    // --- HANDLE COPY/MOVE TO QUEUE ---
+    // --- HANDLE COPY/MOVE ---
     bool applyToAll = false;
     String? bulkAction;
     
@@ -141,27 +76,30 @@ class FileActionHandlerDebug {
 
       // 1. Collision Check
       if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
-        String action;
-        if (applyToAll && bulkAction != null) { 
-          action = bulkAction; 
-        } else {
-          // --- CONTEXT SAFETY CHECK ---
-          if (!context.mounted) return;
-          
-          final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
-          if (result == null) break; // User hit cancel
-          action = result['action'];
-          if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
-        }
         
-        if (action == 'skip') { 
-          continue; 
-        } else if (action == 'replace') { 
-          await FileOperationsService.deleteEntity(targetPath); // Make room for the new file
-        } else if (action == 'rename') { 
-          targetPath = clipboard.action == ClipboardAction.copy 
-            ? FileOperationsService.getCopyUniquePath(destDir, originalName)
-            : FileOperationsService.getRenameUniquePath(destDir, originalName);
+        // FIX: If it's a Copy operation, force auto-rename without showing a dialog
+        if (clipboard.action == ClipboardAction.copy) {
+          targetPath = FileOperationsService.getCopyUniquePath(destDir, originalName);
+        } else {
+          // If it's a Cut/Move operation, show the collision dialog
+          String action;
+          if (applyToAll && bulkAction != null) { 
+            action = bulkAction; 
+          } else {
+            if (!context.mounted) return;
+            final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
+            if (result == null) break; // User hit cancel
+            action = result['action'];
+            if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
+          }
+          
+          if (action == 'skip') { 
+            continue; 
+          } else if (action == 'replace') { 
+            await FileOperationsService.deleteEntity(targetPath); 
+          } else if (action == 'rename') { 
+            targetPath = FileOperationsService.getRenameUniquePath(destDir, originalName);
+          }
         }
       }
 
@@ -182,7 +120,6 @@ class FileActionHandlerDebug {
     
     // Show the active progress dialog bound to these specific tasks
     if (queuedTaskIds.isNotEmpty) {
-       // --- CONTEXT SAFETY CHECK ---
        if (!context.mounted) return;
        OperationProgressDialogDebug.show(context, queuedTaskIds);
     }
@@ -191,4 +128,3 @@ class FileActionHandlerDebug {
       ref.read(clipboardProvider.notifier).state = ClipboardState();
     }
   }
-}
