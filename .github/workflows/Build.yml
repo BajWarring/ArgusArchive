@@ -50,10 +50,22 @@ jobs:
         run: flutter analyze
 
       # 🔥 Patch share_plus plugin for JVM target 17
-      - name: Patch Kotlin JVM Target for share_plus
+      - name: Patch Java and Kotlin to Version 17
         run: |
-          echo "allprojects { tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach { kotlinOptions { jvmTarget = '17' } } }" >> android/build.gradle
-
+          cat <<EOF >> android/build.gradle
+          
+          allprojects {
+              tasks.withType(JavaCompile).configureEach {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                  kotlinOptions {
+                      jvmTarget = "17"
+                  }
+              }
+          }
+          EOF
 
       # ✅ Build with automatic versionCode
       - name: Build APK
