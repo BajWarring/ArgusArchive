@@ -8,6 +8,7 @@ import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../services/transfer/transfer_task.dart';
 import '../../services/operations/file_operations_service.dart';
+import '../../services/operations/archive_service.dart'; // Added missing import
 
 import 'providers.dart';
 import 'header_icons_debug.dart';
@@ -61,7 +62,6 @@ class FileActionHandlerDebug {
           queuedTaskIds.add(task.id);
         }
 
-        // --- CONTEXT SAFETY CHECK ---
         if (!context.mounted) return;
         
         OperationProgressDialogDebug.show(context, queuedTaskIds);
@@ -102,7 +102,7 @@ class FileActionHandlerDebug {
     }
   }
 
-    static Future<void> handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
+  static Future<void> handleFabAction(BuildContext context, WidgetRef ref, String destDir) async {
     final clipboard = ref.read(clipboardProvider);
     final queue = ref.read(transferQueueProvider);
     final currentAdapter = ref.read(storageAdapterProvider);
@@ -113,28 +113,23 @@ class FileActionHandlerDebug {
     if (clipboard.action == ClipboardAction.extract) {
       final zipPath = clipboard.paths.first;
       
-      // We extract to a hidden temp folder first
       final tempExtractDir = p.join(destDir, '.temp_extract_${DateTime.now().millisecondsSinceEpoch}');
       await Directory(tempExtractDir).create();
       
       bool success = await ArchiveService.extractZip(zipPath, tempExtractDir);
       
       if (success && context.mounted) {
-         // Recursive list gets ALL files, avoiding folder-level overwrite blocks
          final allExtractedFiles = Directory(tempExtractDir).listSync(recursive: true).whereType<File>().toList();
          
          bool applyToAll = false;
          String? bulkAction;
 
          for (var tempFile in allExtractedFiles) {
-            // Calculate where this specific file belongs in the final destination
             final relativePath = p.relative(tempFile.path, from: tempExtractDir);
             String finalPath = p.join(destDir, relativePath);
             
-            // Ensure parent directories exist
             await Directory(p.dirname(finalPath)).create(recursive: true);
 
-            // File-level collision check
             if (File(finalPath).existsSync()) {
                  String action;
                  if (applyToAll && bulkAction != null) { 
@@ -156,12 +151,10 @@ class FileActionHandlerDebug {
                  }
             }
             
-            // Move the individual file
             await tempFile.rename(finalPath);
          }
       }
       
-      // Cleanup temp folder
       if (Directory(tempExtractDir).existsSync()) await Directory(tempExtractDir).delete(recursive: true);
       
       ref.read(clipboardProvider.notifier).state = ClipboardState();
@@ -178,21 +171,17 @@ class FileActionHandlerDebug {
       String originalName = p.basename(sourcePath);
       String targetPath = p.join(destDir, originalName);
 
-      // 1. Collision Check
       if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
-        
-        // FIX: If it's a Copy operation, force auto-rename without showing a dialog
         if (clipboard.action == ClipboardAction.copy) {
           targetPath = FileOperationsService.getCopyUniquePath(destDir, originalName);
         } else {
-          // If it's a Cut/Move operation, show the collision dialog
           String action;
           if (applyToAll && bulkAction != null) { 
             action = bulkAction; 
           } else {
             if (!context.mounted) return;
             final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
-            if (result == null) break; // User hit cancel
+            if (result == null) break; 
             action = result['action'];
             if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
           }
@@ -207,7 +196,6 @@ class FileActionHandlerDebug {
         }
       }
 
-      // 2. Build the Task
       final stat = await FileStat.stat(sourcePath);
       final task = TransferTask(
         id: 'transfer_${DateTime.now().millisecondsSinceEpoch}_$i',
@@ -217,12 +205,10 @@ class FileActionHandlerDebug {
         operation: clipboard.action == ClipboardAction.copy ? TransferOperation.copy : TransferOperation.move,
       );
 
-      // 3. Enqueue
       queue.enqueue(task, currentAdapter, currentAdapter);
       queuedTaskIds.add(task.id);
     }
     
-    // Show the active progress dialog bound to these specific tasks
     if (queuedTaskIds.isNotEmpty) {
        if (!context.mounted) return;
        OperationProgressDialogDebug.show(context, queuedTaskIds);
@@ -232,3 +218,4 @@ class FileActionHandlerDebug {
       ref.read(clipboardProvider.notifier).state = ClipboardState();
     }
   }
+} // Fixed: Added missing class closing brace!
