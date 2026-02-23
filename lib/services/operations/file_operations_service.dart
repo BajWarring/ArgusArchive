@@ -4,22 +4,56 @@ import 'package:path/path.dart' as p;
 
 class FileOperationsService {
   
-  /// Generates a smart name if a file already exists (e.g., image.png -> image_copy.png -> image_copy1.png)
-  static String getUniquePath(String destDir, String originalName) {
+  // ==========================================
+  // RENAME LOGIC FOR MOVES (e.g., file_1.txt)
+  // ==========================================
+  static String getRenameUniquePath(String destDir, String originalName) {
     String name = p.basenameWithoutExtension(originalName);
     String ext = p.extension(originalName);
     String newPath = p.join(destDir, originalName);
     
     int counter = 1;
     while (File(newPath).existsSync() || Directory(newPath).existsSync()) {
-      String suffix = counter == 1 ? "_copy" : "_copy$counter";
-      newPath = p.join(destDir, '$name$suffix$ext');
+      newPath = p.join(destDir, '${name}_$counter$ext');
       counter++;
     }
     return newPath;
   }
 
-  /// Deletes a file or directory safely.
+  // ==========================================
+  // RENAME LOGIC FOR COPIES (e.g., file (copy 1).txt)
+  // ==========================================
+  static String getCopyUniquePath(String destDir, String originalName) {
+    String name = p.basenameWithoutExtension(originalName);
+    String ext = p.extension(originalName);
+    
+    // Regex to find existing "(copy)" or "(copy X)" at the end of the name
+    final regex = RegExp(r' \(copy(?: (\d+))?\)$');
+    String baseName = name;
+    int counter = 0;
+    
+    final match = regex.firstMatch(name);
+    if (match != null) {
+      baseName = name.substring(0, match.start);
+      if (match.group(1) != null) {
+        counter = int.parse(match.group(1)!);
+      }
+    }
+
+    String newPath = p.join(destDir, originalName);
+    if (!File(newPath).existsSync() && !Directory(newPath).existsSync()) return newPath;
+
+    int testCounter = counter == 0 && match == null ? 0 : (counter == 0 ? 1 : counter + 1);
+    
+    while (true) {
+      String suffix = testCounter == 0 ? " (copy)" : " (copy $testCounter)";
+      newPath = p.join(destDir, '$baseName$suffix$ext');
+      if (!File(newPath).existsSync() && !Directory(newPath).existsSync()) break;
+      testCounter++;
+    }
+    return newPath;
+  }
+
   static Future<bool> deleteEntity(String path) async {
     try {
       final isDir = await FileSystemEntity.isDirectory(path);
@@ -35,7 +69,6 @@ class FileOperationsService {
     }
   }
 
-  /// Copies a file or folder to a new destination.
   static Future<bool> copyEntity(String sourcePath, String destDirPath, {bool autoRename = true}) async {
     try {
       final originalName = p.basename(sourcePath);
@@ -43,9 +76,9 @@ class FileOperationsService {
 
       if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
         if (autoRename) {
-          targetPath = getUniquePath(destDirPath, originalName);
+          targetPath = getCopyUniquePath(destDirPath, originalName); // Always uses (copy) format
         } else {
-          return false; // Triggers UI collision dialog
+          return false; 
         }
       }
 
@@ -62,7 +95,6 @@ class FileOperationsService {
     }
   }
 
-  /// Moves (Cuts) an entity. Handles cross-drive moves safely.
   static Future<bool> moveEntity(String sourcePath, String destDirPath, {bool autoRename = false}) async {
     try {
       final originalName = p.basename(sourcePath);
@@ -70,9 +102,9 @@ class FileOperationsService {
 
       if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
         if (autoRename) {
-          targetPath = getUniquePath(destDirPath, originalName);
+          targetPath = getRenameUniquePath(destDirPath, originalName); // Uses _1 format
         } else {
-          return false; // Triggers UI collision dialog
+          return false;
         }
       }
       
@@ -84,7 +116,6 @@ class FileOperationsService {
           await File(sourcePath).rename(targetPath);
         }
       } catch (e) {
-        // Fallback for Cross-Device links (Internal -> SD Card)
         final copied = await copyEntity(sourcePath, destDirPath, autoRename: autoRename);
         if (copied) {
           await deleteEntity(sourcePath);
