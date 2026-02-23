@@ -100,15 +100,20 @@ class FileBrowserDebug extends ConsumerWidget {
             final sortOrder = ref.watch(fileSortOrderProvider);
             final sortedFiles = List<FileEntry>.from(files);
             
-            sortedFiles.sort((a, b) {
-              if (a.isDirectory && !b.isDirectory) return -1;
-              if (!a.isDirectory && b.isDirectory) return 1;
+                        sortedFiles.sort((a, b) {
+              if (a.isDirectory && !b.isDirectory) { return -1; }
+              if (!a.isDirectory && b.isDirectory) { return 1; }
               
               int result = 0;
-              if (sortType == FileSortType.size) result = a.size.compareTo(b.size);
-              else if (sortType == FileSortType.date) result = a.modifiedAt.compareTo(b.modifiedAt);
-              else if (sortType == FileSortType.type) result = p.extension(a.path).compareTo(p.extension(b.path));
-              else result = p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
+              if (sortType == FileSortType.size) { 
+                result = a.size.compareTo(b.size); 
+              } else if (sortType == FileSortType.date) { 
+                result = a.modifiedAt.compareTo(b.modifiedAt); 
+              } else if (sortType == FileSortType.type) { 
+                result = p.extension(a.path).compareTo(p.extension(b.path)); 
+              } else { 
+                result = p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()); 
+              }
               
               return sortOrder == FileSortOrder.ascending ? result : -result;
             });
