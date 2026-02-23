@@ -1,0 +1,39 @@
+name: Move mipmap resources to drawable
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  move-files:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create drawable folder if not exists
+        run: |
+          mkdir -p android/app/src/main/res/drawable
+
+      - name: Move all mipmap files
+        run: |
+          for dir in android/app/src/main/res/mipmap*; do
+            if [ -d "$dir" ]; then
+              mv "$dir"/* android/app/src/main/res/drawable/ 2>/dev/null || true
+            fi
+          done
+
+      - name: Remove empty mipmap directories
+        run: |
+          rm -rf android/app/src/main/res/mipmap*
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "refactor: move all mipmap resources to drawable" || echo "No changes to commit"
+          git push
