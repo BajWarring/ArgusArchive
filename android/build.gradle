@@ -17,30 +17,37 @@ tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
 
-// 1. Force Java 17 and Kotlin 17 on ALL external packages
-subprojects {
-    afterEvaluate { project ->
+// Smart Java 17 Force-Sync
+subprojects { project ->
+    def applyJava17 = {
+        // 1. Force the Android settings to 17
         if (project.hasProperty('android')) {
             project.android {
                 compileOptions {
                     sourceCompatibility JavaVersion.VERSION_17
                     targetCompatibility JavaVersion.VERSION_17
                 }
-                kotlinOptions {
-                    jvmTarget = "17"
-                }
             }
         }
         
+        // 2. Force the actual Java compiler to 17
         project.tasks.withType(JavaCompile).configureEach {
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
         
+        // 3. Force the Kotlin compiler to 17
         project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
             kotlinOptions {
                 jvmTarget = "17"
             }
         }
+    }
+
+    // Safely check if the project is already evaluated to avoid crashes
+    if (project.state.executed) {
+        applyJava17()
+    } else {
+        project.afterEvaluate { applyJava17() }
     }
 }
