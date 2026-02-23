@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/enums/file_type.dart';
-import '../../core/utils/path_utils.dart';
 import 'providers.dart';
 import 'search_providers.dart';
 
