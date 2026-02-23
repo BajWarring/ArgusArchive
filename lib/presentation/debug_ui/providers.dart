@@ -22,7 +22,7 @@ final realParentPathProvider = StateProvider<String?>((ref) => null);
 
 /// 3. Current path inside whatever adapter is active
 final currentPathProvider = StateProvider<String>((ref) {
-  return '/storage/emulated/0/Download'; // Default Android path for testing
+  return '/storage/emulated/0'; // Internal Storage/Device Storage
 });
 
 /// 4. Asynchronously loads the directory contents
