@@ -571,12 +571,14 @@ class FileBrowserDebug extends ConsumerWidget {
       else if (clipboard.action == ClipboardAction.cut) {
         bool success = await FileOperationsService.moveEntity(sourcePath, destDir, autoRename: false);
         
-        if (!success && context.mounted) {
+                if (!success && context.mounted) {
           String action;
           
           if (applyToAll && bulkAction != null) {
-            action = bulkAction!;
+            action = bulkAction; // <--- NO EXCLAMATION MARK
+          
           } else {
+
             final result = await _showAdvancedCollisionDialog(context, sourcePath);
             if (result == null) break; // User clicked Cancel
             
