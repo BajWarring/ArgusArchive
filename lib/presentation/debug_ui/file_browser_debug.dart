@@ -11,6 +11,7 @@ import '../../services/transfer/transfer_task.dart';
 import 'providers.dart';
 import 'search_debug.dart';
 import 'transfer_debug.dart';
+import '../../services/storage/storage_volumes_service.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
@@ -48,6 +49,43 @@ class FileBrowserDebug extends ConsumerWidget {
             onPressed: () {
               ref.read(searchQueryProvider.notifier).state = '';
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SearchDebugScreen()));
+            },
+          ),
+                    IconButton(
+            icon: const Icon(Icons.sd_card),
+            tooltip: 'Storage Volumes',
+            onPressed: () async {
+              final roots = await StorageVolumesService.getStorageRoots();
+              
+              if (context.mounted) {
+                showModalBottomSheet(
+                  context: context,
+                  builder: (ctx) {
+                    return SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: roots.map((rootPath) {
+                          final isInternal = rootPath == '/storage/emulated/0';
+                          return ListTile(
+                            leading: Icon(
+                              isInternal ? Icons.phone_android : Icons.sd_storage,
+                              color: isInternal ? Colors.teal : Colors.amber,
+                            ),
+                            title: Text(isInternal ? 'Internal Storage' : 'SD Card / USB'),
+                            subtitle: Text(rootPath, style: const TextStyle(fontSize: 12)),
+                            onTap: () {
+                              // Switch the path cleanly using our LocalStorageAdapter
+                              ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
+                              ref.read(currentPathProvider.notifier).state = rootPath;
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                );
+              }
             },
           ),
         ],
@@ -129,21 +167,6 @@ class FileBrowserDebug extends ConsumerWidget {
             );
           },
         ),
-      ),
-      // --- NEW SAF FOLDER PICKER ---
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.sd_storage),
-        label: const Text('Open SD Card (SAF)'),
-        backgroundColor: Colors.teal,
-        onPressed: () async {
-          // Native Android System prompt asking the user to authorize a folder
-          final uri = await saf_plugin.openDocumentTree(persistablePermission: true);
-          if (uri != null) {
-             // Swap out our entire architecture's data layer to use SAF instantly
-             ref.read(storageAdapterProvider.notifier).state = SafStorageAdapter(rootUri: uri);
-             ref.read(currentPathProvider.notifier).state = '/';
-          }
-        },
       ),
     );
   }
