@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart'; // Added for debugPrint
 import 'package:path/path.dart' as p;
 
 class FileOperationsService {
@@ -13,7 +14,7 @@ class FileOperationsService {
       }
       return true;
     } catch (e) {
-      print("Delete error: $e");
+      debugPrint("Delete error: $e"); // Changed to debugPrint
       return false;
     }
   }
@@ -32,7 +33,7 @@ class FileOperationsService {
       }
       return true;
     } catch (e) {
-      print("Copy error: $e");
+      debugPrint("Copy error: $e"); // Changed to debugPrint
       return false;
     }
   }
@@ -62,7 +63,7 @@ class FileOperationsService {
       }
       return true;
     } catch (e) {
-      print("Move error: $e");
+      debugPrint("Move error: $e"); // Changed to debugPrint
       return false;
     }
   }
