@@ -1,8 +1,24 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart'; // Added for debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 class FileOperationsService {
+  
+  /// Generates a smart name if a file already exists (e.g., image.png -> image_copy.png -> image_copy1.png)
+  static String getUniquePath(String destDir, String originalName) {
+    String name = p.basenameWithoutExtension(originalName);
+    String ext = p.extension(originalName);
+    String newPath = p.join(destDir, originalName);
+    
+    int counter = 1;
+    while (File(newPath).existsSync() || Directory(newPath).existsSync()) {
+      String suffix = counter == 1 ? "_copy" : "_copy$counter";
+      newPath = p.join(destDir, '$name$suffix$ext');
+      counter++;
+    }
+    return newPath;
+  }
+
   /// Deletes a file or directory safely.
   static Future<bool> deleteEntity(String path) async {
     try {
@@ -14,47 +30,65 @@ class FileOperationsService {
       }
       return true;
     } catch (e) {
-      debugPrint("Delete error: $e"); // Changed to debugPrint
+      debugPrint("Delete error: $e");
       return false;
     }
   }
 
   /// Copies a file or folder to a new destination.
-  static Future<bool> copyEntity(String sourcePath, String destDirPath) async {
+  /// [autoRename] automatically applies the _copy suffix if true. If false, it throws an error to trigger your UI collision dialog.
+  static Future<bool> copyEntity(String sourcePath, String destDirPath, {bool autoRename = true}) async {
     try {
-      final name = p.basename(sourcePath);
-      final newPath = p.join(destDirPath, name);
-      final isDir = await FileSystemEntity.isDirectory(sourcePath);
+      final originalName = p.basename(sourcePath);
+      String targetPath = p.join(destDirPath, originalName);
 
+      // Check for collision
+      if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
+        if (autoRename) {
+          targetPath = getUniquePath(destDirPath, originalName);
+        } else {
+          // Return false so the UI knows to ask the user: "Replace, Rename, or Cancel?"
+          return false; 
+        }
+      }
+
+      final isDir = await FileSystemEntity.isDirectory(sourcePath);
       if (isDir) {
-        await _copyDirectory(Directory(sourcePath), Directory(newPath));
+        await _copyDirectory(Directory(sourcePath), Directory(targetPath));
       } else {
-        await File(sourcePath).copy(newPath);
+        await File(sourcePath).copy(targetPath);
       }
       return true;
     } catch (e) {
-      debugPrint("Copy error: $e"); // Changed to debugPrint
+      debugPrint("Copy error: $e");
       return false;
     }
   }
 
   /// Moves (Cuts) an entity. Handles cross-drive moves safely.
-  static Future<bool> moveEntity(String sourcePath, String destDirPath) async {
+  static Future<bool> moveEntity(String sourcePath, String destDirPath, {bool autoRename = false}) async {
     try {
-      final name = p.basename(sourcePath);
-      final newPath = p.join(destDirPath, name);
+      final originalName = p.basename(sourcePath);
+      String targetPath = p.join(destDirPath, originalName);
+
+      if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
+        if (autoRename) {
+          targetPath = getUniquePath(destDirPath, originalName);
+        } else {
+          return false; // Triggers UI collision dialog
+        }
+      }
       
       try {
-        // Try the fast rename first (works if on the same drive)
         final isDir = await FileSystemEntity.isDirectory(sourcePath);
         if (isDir) {
-          await Directory(sourcePath).rename(newPath);
+          await Directory(sourcePath).rename(targetPath);
         } else {
-          await File(sourcePath).rename(newPath);
+          await File(sourcePath).rename(targetPath);
         }
       } catch (e) {
         // Fallback for Cross-Device links (Internal -> SD Card)
-        final copied = await copyEntity(sourcePath, destDirPath);
+        final copied = await copyEntity(sourcePath, destDirPath, autoRename: autoRename);
         if (copied) {
           await deleteEntity(sourcePath);
         } else {
@@ -63,12 +97,11 @@ class FileOperationsService {
       }
       return true;
     } catch (e) {
-      debugPrint("Move error: $e"); // Changed to debugPrint
+      debugPrint("Move error: $e");
       return false;
     }
   }
 
-  /// Helper to recursively copy directories
   static Future<void> _copyDirectory(Directory source, Directory destination) async {
     await destination.create(recursive: true);
     await for (var entity in source.list(recursive: false)) {
