@@ -21,15 +21,18 @@ class SelectionMenuDebug extends ConsumerWidget {
         PopupMenuButton<String>(
           icon: const Icon(Icons.checklist),
           tooltip: 'Selection Options',
-          onSelected: (val) {
+                    onSelected: (val) {
             final allFiles = asyncContents.value?.where((e) => e.path != '..').map((e) => e.path).toSet() ?? {};
-            if (val == 'all') ref.read(selectedFilesProvider.notifier).state = allFiles;
-            else if (val == 'none') ref.read(selectedFilesProvider.notifier).state = {};
-            else if (val == 'invert') {
+            if (val == 'all') {
+              ref.read(selectedFilesProvider.notifier).state = allFiles;
+            } else if (val == 'none') {
+              ref.read(selectedFilesProvider.notifier).state = {};
+            } else if (val == 'invert') {
               final current = ref.read(selectedFilesProvider);
               ref.read(selectedFilesProvider.notifier).state = allFiles.difference(current);
             }
           },
+
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'all', child: Text('Select All')),
             const PopupMenuItem(value: 'none', child: Text('Deselect All')),
