@@ -36,19 +36,16 @@ class FileOperationsService {
   }
 
   /// Copies a file or folder to a new destination.
-  /// [autoRename] automatically applies the _copy suffix if true. If false, it throws an error to trigger your UI collision dialog.
   static Future<bool> copyEntity(String sourcePath, String destDirPath, {bool autoRename = true}) async {
     try {
       final originalName = p.basename(sourcePath);
       String targetPath = p.join(destDirPath, originalName);
 
-      // Check for collision
       if (File(targetPath).existsSync() || Directory(targetPath).existsSync()) {
         if (autoRename) {
           targetPath = getUniquePath(destDirPath, originalName);
         } else {
-          // Return false so the UI knows to ask the user: "Replace, Rename, or Cancel?"
-          return false; 
+          return false; // Triggers UI collision dialog
         }
       }
 
