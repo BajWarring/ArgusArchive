@@ -96,7 +96,7 @@ final queueTasksStreamProvider = StreamProvider<List<TransferTask>>((ref) {
 // ==========================================
 
 /// 11. Clipboard Action Enum
-enum ClipboardAction { copy, cut, none }
+enum ClipboardAction { copy, cut, extract, none }
 
 /// 12. Clipboard State Object
 class ClipboardState {
