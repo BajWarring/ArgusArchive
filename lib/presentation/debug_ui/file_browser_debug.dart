@@ -65,7 +65,7 @@ class FileBrowserDebug extends ConsumerWidget {
       ),
       body: PopScope(
         canPop: false,
-        onPopInvokedWithResult: (didPop, result) {
+                onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
           
           if (currentAdapter is ZipArchiveAdapter) {
@@ -78,19 +78,21 @@ class FileBrowserDebug extends ConsumerWidget {
               Navigator.of(context).pop();
             }
           } else if (currentAdapter is SafStorageAdapter) {
-             // In SAF, back navigation requires parsing parent URIs which is complex. 
-             // For debug UI, we'll just reset back to LocalStorage.
              ref.read(storageAdapterProvider.notifier).state = LocalStorageAdapter();
-             ref.read(currentPathProvider.notifier).state = '/storage/emulated/0/Download';
+             // Reset to internal storage root instead of Download
+             ref.read(currentPathProvider.notifier).state = '/storage/emulated/0';
           } else {
-            if (currentPath.split('/').length > 2) {
+            // Prevent navigating higher than internal storage root
+            if (currentPath == '/storage/emulated/0') {
+               // We are at the root, let Android close or background the app
+            } else if (currentPath.split('/').length > 4) { 
+               // Safe to navigate up (e.g., from /storage/emulated/0/Music to /storage/emulated/0)
                final parent = PathUtils.join(currentPath, '..');
                ref.read(currentPathProvider.notifier).state = parent;
-            } else {
-               Navigator.of(context).pop();
             }
           }
         },
+
         child: contentsAsyncValue.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, stack) => Center(child: Text('Error: $err\n\n(Did you grant permissions?)', textAlign: TextAlign.center)),
