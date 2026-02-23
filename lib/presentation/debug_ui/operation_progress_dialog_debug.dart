@@ -56,7 +56,7 @@ class OperationProgressDialogDebug extends StatelessWidget {
           const SizedBox(height: 16),
           LinearProgressIndicator(
             value: progress,
-            backgroundColor: Colors.teal.withOpacity(0.2),
+            backgroundColor: Colors.teal.withvalues(alpha: 0.2),
             color: Colors.teal,
             minHeight: 8,
             borderRadius: BorderRadius.circular(4),
