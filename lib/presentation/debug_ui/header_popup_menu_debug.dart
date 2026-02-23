@@ -58,17 +58,21 @@ class HeaderPopupMenuDebug extends ConsumerWidget {
         final segments = currentPath.split('/');
         int indent = 0;
         
-        for (int i = 0; i < segments.length; i++) {
-          if (segments[i].isEmpty) continue;
-          cumulativePath = p.join(cumulativePath, segments[i]);
-          
-          if (cumulativePath == '/storage' || cumulativePath == '/storage/emulated') continue;
-          
-          String displayName = segments[i];
-          if (cumulativePath == '/storage/emulated/0') displayName = 'Internal Storage';
-          else if (RegExp(r'^/storage/[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(cumulativePath)) displayName = 'SD Card';
+                                for (int i = 0; i < segments.length; i++) {
+                          if (segments[i].isEmpty) { continue; }
+                          cumulativePath = p.join(cumulativePath, segments[i]);
+                          
+                          if (cumulativePath == '/storage' || cumulativePath == '/storage/emulated') { continue; }
+                          
+                          String displayName = segments[i];
+                          if (cumulativePath == '/storage/emulated/0') {
+                            displayName = 'Internal Storage';
+                          } else if (RegExp(r'^/storage/[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(cumulativePath)) {
+                            displayName = 'SD Card';
+                          }
 
-          final navPath = cumulativePath; 
+                          final navPath = cumulativePath; 
+
           items.add(PopupMenuItem(
             value: 'nav|$navPath',
             child: Padding(
