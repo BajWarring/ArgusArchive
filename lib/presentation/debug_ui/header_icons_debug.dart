@@ -43,16 +43,25 @@ class HeaderIconsDebug extends ConsumerWidget {
               const PopupMenuItem(value: 'new_folder', child: Row(children: [Icon(Icons.create_new_folder), SizedBox(width: 8), Text('New Folder')])),
               const PopupMenuItem(value: 'new_file', child: Row(children: [Icon(Icons.note_add), SizedBox(width: 8), Text('New File')])),
               const PopupMenuDivider(),
+              
               const PopupMenuItem(enabled: false, child: Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal))),
               PopupMenuItem(value: 'sort_name', child: _buildSortItem('Name', sType == FileSortType.name)),
               PopupMenuItem(value: 'sort_size', child: _buildSortItem('Size', sType == FileSortType.size)),
               PopupMenuItem(value: 'sort_date', child: _buildSortItem('Date', sType == FileSortType.date)),
               PopupMenuItem(value: 'sort_type', child: _buildSortItem('Type', sType == FileSortType.type)),
               const PopupMenuDivider(),
+              
               PopupMenuItem(value: 'order_asc', child: _buildSortItem('Ascending', sOrder == FileSortOrder.ascending)),
               PopupMenuItem(value: 'order_desc', child: _buildSortItem('Descending', sOrder == FileSortOrder.descending)),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 'index', child: Text('Rebuild Search Index')),
+              
+              const PopupMenuItem(value: 'index', child: Row(children: [Icon(Icons.refresh, size: 20), SizedBox(width: 8), Text('Rebuild Search Index')])),
+              const PopupMenuDivider(),
+
+              // NEW: Sub-App Integrations
+              const PopupMenuItem(enabled: false, child: Text('Sub-Apps', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal))),
+              const PopupMenuItem(value: 'add_video_shortcut', child: Row(children: [Icon(Icons.video_library, size: 20), SizedBox(width: 8), Text('Add Video Player Shortcut')])),
+              const PopupMenuItem(value: 'add_audio_shortcut', child: Row(children: [Icon(Icons.library_music, size: 20), SizedBox(width: 8), Text('Add Audio Player Shortcut')])),
             ];
           },
         ),
