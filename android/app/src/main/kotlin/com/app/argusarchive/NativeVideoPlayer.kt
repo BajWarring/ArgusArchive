@@ -25,6 +25,7 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+import androidx.media3.ui.AspectRatioFrameLayout
 
 class NativeVideoPlayer(
     private val context: Context,
@@ -191,6 +192,16 @@ class NativeVideoPlayer(
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (vol * max).toInt(), 0)
                 result.success(null)
             }
+            "setAspectRatio" -> {
+                val mode = call.argument<Int>("mode") ?: 0
+                playerView.resizeMode = when (mode) {
+                    1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL // Stretch
+                    2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM // Crop
+                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT // Fit
+                }
+                result.success(null)
+            }
+
             else -> result.notImplemented()
         }
     }
