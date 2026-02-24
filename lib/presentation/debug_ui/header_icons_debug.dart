@@ -44,6 +44,9 @@ class HeaderIconsDebug extends ConsumerWidget {
               const PopupMenuItem(value: 'new_file', child: Row(children: [Icon(Icons.note_add), SizedBox(width: 8), Text('New File')])),
               const PopupMenuDivider(),
               
+              const PopupMenuItem(value: 'shortcut_video', child: Row(children: [Icon(Icons.video_library), SizedBox(width: 8), Text('Add Video Player Shortcut')])),
+
+              
               const PopupMenuItem(enabled: false, child: Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal))),
               PopupMenuItem(value: 'sort_name', child: _buildSortItem('Name', sType == FileSortType.name)),
               PopupMenuItem(value: 'sort_size', child: _buildSortItem('Size', sType == FileSortType.size)),
