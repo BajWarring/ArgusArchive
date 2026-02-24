@@ -113,16 +113,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _isLeftHalfDrag = details.globalPosition.dx < (screenWidth / 2);
   }
 
-  void _onPanUpdate(DragUpdateDetails details) {
+    void _onPanUpdate(DragUpdateDetails details) {
     if (_isLocked || _controller == null) return;
     
     final dx = details.globalPosition.dx - _dragStartPos.dx;
     final dy = details.globalPosition.dy - _dragStartPos.dy;
 
     if (_currentAxis == GestureAxis.none) {
-      if (dx.abs() > 20) _currentAxis = GestureAxis.horizontal;
-      else if (dy.abs() > 20) _currentAxis = GestureAxis.vertical;
+      if (dx.abs() > 20) {
+        _currentAxis = GestureAxis.horizontal;
+      } else if (dy.abs() > 20) {
+        _currentAxis = GestureAxis.vertical;
+      }
     }
+
 
     if (_currentAxis == GestureAxis.horizontal) {
       final screenWidth = MediaQuery.of(context).size.width;
