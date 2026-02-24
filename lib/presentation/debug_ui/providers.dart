@@ -12,6 +12,7 @@ import '../../services/indexer/index_service.dart';
 import '../../services/transfer/transfer_queue.dart';
 import '../../services/transfer/transfer_task.dart';
 import 'search_providers.dart'; // To access searchDatabaseProvider
+import '../../services/storage/storage_volumes_service.dart'; // Add this import at the top
 
 // 1. Make the adapter a StateProvider so we can swap it to a ZIP adapter at runtime
 final storageAdapterProvider = StateProvider<StorageAdapter>((ref) {
@@ -52,9 +53,7 @@ final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
 });
 
 // 6. Index Service Initialization (Now uses SearchDatabase!)
-import '../../services/storage/storage_volumes_service.dart'; // Add this import at the top
 
-// ... scroll down to indexServiceProvider
 final indexServiceProvider = FutureProvider<IndexService>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final db = await ref.watch(searchDatabaseProvider.future);
