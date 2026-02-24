@@ -9,7 +9,7 @@ import '../../core/enums/file_type.dart';
 import '../../services/transfer/transfer_task.dart';
 import '../../services/operations/file_operations_service.dart';
 import '../../services/operations/archive_service.dart';
-import '../../services/sub_app/shortcut_service.dart'; // Added for video shortcut
+import '../../services/sub_app/shortcut_service.dart';
 
 import 'providers.dart';
 import 'header_icons_debug.dart';
@@ -88,7 +88,7 @@ class FileActionHandlerDebug {
       ref.read(fileSortOrderProvider.notifier).state = value == 'order_asc' ? FileSortOrder.ascending : FileSortOrder.descending;
     } else if (value == 'index') {
       final indexer = await ref.read(indexServiceProvider.future);
-      await indexer.start(rootPath: '/storage/emulated/0', rebuild: true);
+      await indexer.start(rootPaths: ['/storage/emulated/0'], rebuild: true); // Update rootPaths as needed via StorageVolumesService if required
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started!')));
     } else if (value == 'shortcut_video') {
       final success = await ShortcutService.createVideoPlayerShortcut();
