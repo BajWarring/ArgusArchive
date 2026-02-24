@@ -18,10 +18,14 @@ import 'file_action_handler_debug.dart';
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
 
-  @override
+    @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // WAKE UP THE INDEXER: This forces the autoStart method to run silently in the background
+    ref.watch(indexServiceProvider); 
+
     final currentPath = ref.watch(currentPathProvider);
     final currentAdapter = ref.watch(storageAdapterProvider);
+
     final asyncContents = ref.watch(directoryContentsProvider);
     
     final clipboard = ref.watch(clipboardProvider);
