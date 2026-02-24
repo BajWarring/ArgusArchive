@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -5,9 +6,8 @@ import 'package:path/path.dart' as p;
 import '../../core/enums/file_type.dart';
 import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/search_providers.dart';
-import '../../presentation/debug_ui/file_thumbnail_debug.dart';
-import '../../presentation/debug_ui/providers.dart';
 import '../../features/file_handlers/video_handler.dart';
+import '../operations/video_thumbnail_service.dart'; // The new bridge
 
 class VideoLibraryScreen extends ConsumerWidget {
   const VideoLibraryScreen({super.key});
@@ -15,7 +15,6 @@ class VideoLibraryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dbAsync = ref.watch(searchDatabaseProvider);
-    final adapter = ref.watch(storageAdapterProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -27,18 +26,29 @@ class VideoLibraryScreen extends ConsumerWidget {
         error: (err, stack) => Center(child: Text('Error loading library: $err')),
         data: (db) {
           return FutureBuilder<List<FileEntry>>(
-            future: db.search(query: '', filterType: FileType.video).then((videos) {
-              // Sort date descending
-              videos.sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
-              return videos;
-            }),
+            // Pass an empty string, the upgraded FTS engine will now safely return all videos!
+            future: db.search(query: '', filterType: FileType.video),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
               final videos = snapshot.data ?? [];
               if (videos.isEmpty) {
-                return const Center(child: Text('No videos found on device.', style: TextStyle(color: Colors.grey)));
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.videocam_off, size: 64, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      const Text('No videos found on device.', style: TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => ref.invalidate(searchDatabaseProvider),
+                        child: const Text('Refresh Library')
+                      )
+                    ],
+                  )
+                );
               }
 
               return GridView.builder(
@@ -61,7 +71,26 @@ class VideoLibraryScreen extends ConsumerWidget {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: FileThumbnailDebug(file: video, adapter: adapter, isDirectory: false),
+                          child: Container(
+                            color: Colors.grey[900], // Background color while native thumbnail loads
+                            child: FutureBuilder<Uint8List?>(
+                              future: VideoThumbnailService.getThumbnail(video.path),
+                              builder: (context, thumbSnapshot) {
+                                if (thumbSnapshot.connectionState == ConnectionState.waiting) {
+                                  return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                                }
+                                if (thumbSnapshot.hasData && thumbSnapshot.data != null) {
+                                  return Image.memory(
+                                    thumbSnapshot.data!,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                  );
+                                }
+                                return const Center(child: Icon(Icons.movie, size: 40, color: Colors.indigo));
+                              }
+                            ),
+                          ),
                         ),
                         Container(
                           decoration: BoxDecoration(
@@ -97,7 +126,7 @@ class VideoLibraryScreen extends ConsumerWidget {
                   );
                 },
               );
-            },
+            }
           );
         }
       ),
