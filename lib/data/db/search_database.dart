@@ -65,6 +65,15 @@ class SearchDatabase {
     await db.rawDelete('DELETE FROM file_index WHERE id = ? OR path LIKE ?', [id, '$id/%']);
   }
 
+  Future<bool> isEmpty() async {
+    final db = _db;
+    if (db == null) return true;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM file_index');
+    final count = Sqflite.firstIntValue(result);
+    return count == null || count == 0;
+  }
+
+
   Future<List<FileEntry>> search({
     required String query, 
     FileType? filterType,
