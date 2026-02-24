@@ -32,7 +32,7 @@ class VideoPlayerScreen extends StatefulWidget {
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   bool _showControls = true;
   bool _showLockOverlay = false;
@@ -74,6 +74,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _setLandscape();
     _startHideTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause video when app is minimized, inactive, or screen turns off
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.hidden) {
+      _controller?.pause();
+      if (mounted) {
+        setState(() => _showControls = true);
+      }
+    }
   }
 
   @override
