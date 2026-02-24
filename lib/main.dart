@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'presentation/splash_ui/root_navigator.dart';
 import 'services/sub_app/shortcut_service.dart';
-import 'features/video_player_app/video_library_screen.dart';
+import 'services/video_player_app/video_library_screen.dart';
 
 // Global Key to allow navigation from outside the standard widget tree
 final navigatorKey = GlobalKey<NavigatorState>();
