@@ -3,6 +3,7 @@ import '../ui_theme.dart';
 import 'views/video_grid_view.dart';
 import 'views/browse_view.dart';
 import 'views/explorer_view.dart';
+import 'views/video_settings_view.dart';
 import 'widgets/video_bottom_nav.dart';
 
 enum VideoTab { video, browse, explorer, settings }
@@ -100,8 +101,7 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> {
       case VideoTab.video: return const VideoGridView();
       case VideoTab.browse: return BrowseView(onOpenExplorer: () => _switchTab(VideoTab.explorer));
       case VideoTab.explorer: return const VideoExplorerView();
-      case VideoTab.settings: return const VideoSettingsView();
-
+      case VideoTab.settings: return const VideoSettingsView(); // Fully linked!
     }
   }
 }
