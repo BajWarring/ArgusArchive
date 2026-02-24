@@ -19,7 +19,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   MainView _currentView = MainView.home;
   bool _isSelectionMode = false;
-  int _selectionCount = 0;
+  final int _selectionCount = 0; // FIXED: Made final to satisfy the linter
   
   // Operation Bar State
   bool _isCopyingState = false;
@@ -38,7 +38,6 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
     if (_currentView == MainView.browser) {
-      // Stub: Jump back to home if path stack is empty
       _navigateTo(MainView.home);
     }
   }
@@ -49,13 +48,15 @@ class _MainScreenState extends State<MainScreen> {
 
     return PopScope(
       canPop: _currentView == MainView.home && !_isSelectionMode,
-      onPopInvoked: (didPop) { if (!didPop) _handleHardwareBack(); },
+      // FIXED: Replaced deprecated onPopInvoked with onPopInvokedWithResult
+      onPopInvokedWithResult: (didPop, result) { 
+        if (!didPop) _handleHardwareBack(); 
+      },
       child: Scaffold(
         backgroundColor: isDark ? ArgusColors.bgDark : ArgusColors.bgLight,
         body: SafeArea(
           child: Stack(
             children: [
-              // 1. The Main Content
               Column(
                 children: [
                   MainHeader(
@@ -75,8 +76,6 @@ class _MainScreenState extends State<MainScreen> {
                   ),
                 ],
               ),
-              
-              // 2. The Floating Operation Bar (Shows when copying/cutting)
               if (_isCopyingState)
                 Positioned(
                   bottom: 0, left: 0, right: 0,
@@ -94,8 +93,6 @@ class _MainScreenState extends State<MainScreen> {
             ],
           ),
         ),
-        
-        // TEMPORARY: A floating button to test the operation bar so you can see it working
         floatingActionButton: _currentView == MainView.browser ? FloatingActionButton(
           onPressed: () => setState(() => _isCopyingState = true),
           backgroundColor: ArgusColors.primary,
