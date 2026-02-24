@@ -3,7 +3,6 @@ import '../../ui_theme.dart';
 
 class MainUIDialogs {
   
-  /// Matches the `#bottom-sheet` HTML definition
   static void showActionBottomSheet(BuildContext context, {required String itemName, required String subtitle, required IconData icon, required Color iconColor, required bool isFolder}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -26,8 +25,6 @@ class MainUIDialogs {
               children: [
                 Container(width: 48, height: 4, decoration: BoxDecoration(color: isDark ? Colors.grey.shade600 : Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
                 const SizedBox(height: 24),
-                
-                // Header
                 Row(
                   children: [
                     Container(
@@ -47,13 +44,11 @@ class MainUIDialogs {
                     ),
                     IconButton(
                       icon: const Icon(Icons.radio_button_unchecked, color: Colors.grey),
-                      onPressed: () { /* Start Selection Stub */ Navigator.pop(context); },
+                      onPressed: () { Navigator.pop(context); },
                     )
                   ],
                 ),
                 const SizedBox(height: 16),
-                
-                // Action Grid
                 if (!isFolder) ...[
                   _buildActionRow(context, 'Open File', Icons.open_in_new, isDark ? Colors.white70 : Colors.black87),
                   const Divider(height: 16, thickness: 1, color: Colors.white10),
@@ -72,7 +67,7 @@ class MainUIDialogs {
 
   static Widget _buildActionRow(BuildContext context, String label, IconData icon, Color color) {
     return InkWell(
-      onTap: () { Navigator.pop(context); /* Action Stub */ },
+      onTap: () { Navigator.pop(context); },
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -87,7 +82,6 @@ class MainUIDialogs {
     );
   }
 
-  /// Matches the `#pin-modal-backdrop` Mini Explorer HTML
   static void showPinFolderModal(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -148,11 +142,10 @@ class MainUIDialogs {
       title: Text(folderName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
       trailing: const Icon(Icons.add, color: Colors.grey, size: 20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onTap: () { Navigator.pop(context); /* Pin action stub */ },
+      onTap: () { Navigator.pop(context); },
     );
   }
 
-  /// Matches the `#task-progress-backdrop` HTML
   static void showTaskProgressDialog(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -169,22 +162,24 @@ class MainUIDialogs {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                // FIXED: Added const to Row
+                const Row(
                   children: [
-                    const Icon(Icons.drive_file_move, color: ArgusColors.primary, size: 28),
-                    const SizedBox(width: 8),
-                    const Text('Moving...', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    Icon(Icons.drive_file_move, color: ArgusColors.primary, size: 28),
+                    SizedBox(width: 8),
+                    Text('Moving...', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 const Text('item.txt', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey)),
                 const SizedBox(height: 24),
-                Row(
+                // FIXED: Added const to Row
+                const Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text('0 / 1 files', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: Colors.grey)),
-                    const Text('45%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text('0 / 1 files', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: Colors.grey)),
+                    Text('45%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 8),
