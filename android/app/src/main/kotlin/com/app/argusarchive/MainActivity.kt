@@ -1,9 +1,14 @@
 package com.app.argusarchive
 
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Icon
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -11,6 +16,7 @@ import java.io.ByteArrayOutputStream
 
 class MainActivity: FlutterActivity() {
     private val APK_CHANNEL = "com.app.argusarchive/apk_icon"
+    private val SHORTCUT_CHANNEL = "com.app.argusarchive/shortcuts"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -39,6 +45,37 @@ class MainActivity: FlutterActivity() {
                     }
                 } else {
                     result.error("INVALID_ARGUMENT", "Path cannot be null.", null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        // ==========================================
+        // 3. APP SHORTCUTS: Video Library Sub-App
+        // ==========================================
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHORTCUT_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "createVideoPlayerShortcut") {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val shortcutManager = context.getSystemService(ShortcutManager::class.java)
+                    if (shortcutManager != null && shortcutManager.isRequestPinShortcutSupported) {
+                        val intent = Intent(context, MainActivity::class.java)
+                        intent.action = Intent.ACTION_VIEW
+                        // We will read this route on app startup to jump straight to the library
+                        intent.putExtra("route", "/video_library") 
+                        
+                        val pinShortcutInfo = ShortcutInfo.Builder(context, "video_player_shortcut")
+                            .setShortLabel("Video Player")
+                            .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher)) // Uses your existing app icon
+                            .setIntent(intent)
+                            .build()
+                        shortcutManager.requestPinShortcut(pinShortcutInfo, null)
+                        result.success(true)
+                    } else { 
+                        result.success(false) 
+                    }
+                } else { 
+                    result.success(false) 
                 }
             } else {
                 result.notImplemented()
