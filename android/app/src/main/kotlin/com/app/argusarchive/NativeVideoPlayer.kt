@@ -233,7 +233,7 @@ class NativeVideoPlayer(
                         "duration" to exoPlayer.duration,
                         "buffered" to exoPlayer.bufferedPosition
                     ))
-                    handler.postDelayed(this, 250) // High refresh rate for smooth slider
+                    handler.postDelayed(this, 16) // High refresh rate for smooth slider
                 }
             }
         })
