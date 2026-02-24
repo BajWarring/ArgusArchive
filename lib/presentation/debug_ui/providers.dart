@@ -11,7 +11,6 @@ import '../../features/file_handlers/video_handler.dart';
 import '../../services/indexer/index_service.dart';
 import '../../services/transfer/transfer_queue.dart';
 import '../../services/transfer/transfer_task.dart';
-import '../../features/file_handlers/video_handler.dart';
 import 'search_providers.dart'; // To access searchDatabaseProvider
 
 // 1. Make the adapter a StateProvider so we can swap it to a ZIP adapter at runtime
