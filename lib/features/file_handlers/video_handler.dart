@@ -7,6 +7,8 @@ import '../../core/utils/path_utils.dart';
 import '../../services/video/video_player_controller.dart';
 import 'file_handler.dart';
 
+enum GestureAxis { none, horizontal, vertical }
+
 class VideoHandler implements FileHandler {
   final List<String> _exts = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'ts'];
 
@@ -36,38 +38,61 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
   bool _isLocked = false;
   Timer? _hideTimer;
   
-  // Gesture State
-  double _dragStartY = 0;
+  // Custom Controls State
+  bool _isLandscape = true;
+  int _aspectRatioMode = 0; // 0: Fit, 1: Stretch/Fill, 2: Crop/Zoom
+  final List<String> _aspectRatioLabels = ['Fit', 'Stretch', 'Crop'];
+  final List<IconData> _aspectRatioIcons = [Icons.aspect_ratio, Icons.fit_screen, Icons.crop];
+
+  // Axis-Locked Gesture State
+  GestureAxis _currentAxis = GestureAxis.none;
+  Offset _dragStartPos = Offset.zero;
+  
+  // Vertical Gesture
   double _currentVolume = 0.5;
   double _currentBrightness = 0.5;
+  bool _isLeftHalfDrag = false;
+  
+  // Horizontal Gesture (Seek)
+  Duration _startSeekPos = Duration.zero;
+  Duration _targetSeekPos = Duration.zero;
+  
+  // Scrubber State
+  double? _scrubberDragValue;
+
+  // Visual Feedback Toast
   String _gestureFeedback = "";
+  IconData? _gestureIcon;
   bool _showGestureFeedback = false;
+  Timer? _toastTimer;
+
+  // Speed Boost
+  bool _isSpeedBoosted = false;
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    _setLandscape();
     _startHideTimer();
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _toastTimer?.cancel();
     _controller?.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
-  void _onPlatformViewCreated(int id) {
-    setState(() => _controller = VideoPlayerController(id));
-  }
+  void _onPlatformViewCreated(int id) => setState(() => _controller = VideoPlayerController(id));
 
   void _startHideTimer() {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _showControls) setState(() => _showControls = false);
+      if (mounted && _showControls && !_isLocked) setState(() => _showControls = false);
     });
   }
 
@@ -76,59 +101,157 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
     if (_showControls) _startHideTimer();
   }
 
-  // === GESTURE LOGIC ===
-  void _onVerticalDragStart(DragStartDetails details) {
-    _dragStartY = details.globalPosition.dy;
+  void _toggleOrientation() {
+    if (_isLandscape) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    } else {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    }
+    setState(() => _isLandscape = !_isLandscape);
   }
 
-  void _onVerticalDragUpdate(DragUpdateDetails details, BuildContext context) {
-    if (_isLocked) return;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isLeftHalf = details.globalPosition.dx < (screenWidth / 2);
-    
-    // Calculate delta as percentage of screen height
-    final delta = (_dragStartY - details.globalPosition.dy) / screenHeight;
-    _dragStartY = details.globalPosition.dy;
-
+  void _cycleAspectRatio() {
     setState(() {
-      _showGestureFeedback = true;
-      if (isLeftHalf) {
-        _currentBrightness = (_currentBrightness + delta).clamp(0.0, 1.0);
-        _controller?.setBrightness(_currentBrightness);
-        _gestureFeedback = "Brightness: ${(_currentBrightness * 100).toInt()}%";
-      } else {
-        _currentVolume = (_currentVolume + delta).clamp(0.0, 1.0);
-        _controller?.setVolume(_currentVolume);
-        _gestureFeedback = "Volume: ${(_currentVolume * 100).toInt()}%";
-      }
+      _aspectRatioMode = (_aspectRatioMode + 1) % 3;
+      _controller?.setAspectRatio(_aspectRatioMode);
+      _showToast(_aspectRatioLabels[_aspectRatioMode], _aspectRatioIcons[_aspectRatioMode]);
     });
   }
 
-  void _onVerticalDragEnd(DragEndDetails details) {
-    setState(() => _showGestureFeedback = false);
+  // ==========================================
+  // PREMIUM GESTURE MATRIX
+  // ==========================================
+
+  void _onPanStart(DragStartDetails details) {
+    if (_isLocked || _controller == null) return;
+    _dragStartPos = details.globalPosition;
+    _currentAxis = GestureAxis.none;
+    _startSeekPos = _controller!.value.position;
+    
+    final screenWidth = MediaQuery.of(context).size.width;
+    _isLeftHalfDrag = details.globalPosition.dx < (screenWidth / 2);
   }
 
-  void _onDoubleTap(TapDownDetails details, BuildContext context) {
+  void _onPanUpdate(DragUpdateDetails details) {
+    if (_isLocked || _controller == null) return;
+    
+    final dx = details.globalPosition.dx - _dragStartPos.dx;
+    final dy = details.globalPosition.dy - _dragStartPos.dy;
+
+    // Strict 20px Axis Lock Threshold
+    if (_currentAxis == GestureAxis.none) {
+      if (dx.abs() > 20) _currentAxis = GestureAxis.horizontal;
+      else if (dy.abs() > 20) _currentAxis = GestureAxis.vertical;
+    }
+
+    if (_currentAxis == GestureAxis.horizontal) {
+      // Horizontal: Velocity/Distance based seeking
+      final screenWidth = MediaQuery.of(context).size.width;
+      final duration = _controller!.value.duration;
+      
+      // Calculate seek amount (1 full screen swipe = ~30% of video)
+      final seekPercentage = (dx / screenWidth) * 0.3;
+      final seekDelta = Duration(milliseconds: (duration.inMilliseconds * seekPercentage).toInt());
+      
+      _targetSeekPos = _startSeekPos + seekDelta;
+      
+      // Clamp
+      if (_targetSeekPos < Duration.zero) _targetSeekPos = Duration.zero;
+      if (_targetSeekPos > duration) _targetSeekPos = duration;
+
+      final deltaSec = seekDelta.inSeconds;
+      final sign = deltaSec > 0 ? "+" : "";
+      
+      setState(() {
+        _showGestureFeedback = true;
+        _gestureFeedback = "$sign${deltaSec}s\n${_formatDuration(_targetSeekPos)}";
+        _gestureIcon = deltaSec > 0 ? Icons.fast_forward : Icons.fast_rewind;
+      });
+      
+    } else if (_currentAxis == GestureAxis.vertical) {
+      // Vertical: Volume or Brightness
+      final screenHeight = MediaQuery.of(context).size.height;
+      // Negative dy means sliding UP (increase)
+      final delta = -dy / screenHeight; 
+      _dragStartPos = details.globalPosition; // Reset for relative continuous drag
+
+      setState(() {
+        _showGestureFeedback = true;
+        if (_isLeftHalfDrag) {
+          _currentBrightness = (_currentBrightness + delta).clamp(0.0, 1.0);
+          _controller?.setBrightness(_currentBrightness);
+          _gestureFeedback = "${(_currentBrightness * 100).toInt()}%";
+          _gestureIcon = Icons.brightness_6;
+        } else {
+          _currentVolume = (_currentVolume + delta).clamp(0.0, 1.0);
+          _controller?.setVolume(_currentVolume);
+          _gestureFeedback = "${(_currentVolume * 100).toInt()}%";
+          _gestureIcon = Icons.volume_up;
+        }
+      });
+    }
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    if (_currentAxis == GestureAxis.horizontal) {
+      _controller?.seekTo(_targetSeekPos);
+    }
+    setState(() {
+      _showGestureFeedback = false;
+      _currentAxis = GestureAxis.none;
+    });
+  }
+
+  void _onLongPressStart(LongPressStartDetails details) {
+    if (_isLocked || _controller == null) return;
+    HapticFeedback.lightImpact();
+    _controller?.setSpeed(2.0);
+    setState(() {
+      _isSpeedBoosted = true;
+      _showGestureFeedback = true;
+      _gestureFeedback = "2x Speed";
+      _gestureIcon = Icons.speed;
+    });
+  }
+
+  void _onLongPressEnd(LongPressEndDetails details) {
+    if (_isLocked || _controller == null) return;
+    _controller?.setSpeed(1.0);
+    setState(() {
+      _isSpeedBoosted = false;
+      _showGestureFeedback = false;
+    });
+  }
+
+  void _onDoubleTap(TapDownDetails details) {
     if (_isLocked || _controller == null) return;
     final screenWidth = MediaQuery.of(context).size.width;
     final pos = _controller!.value.position;
     
     if (details.globalPosition.dx < screenWidth / 2) {
       _controller!.seekTo(pos - const Duration(seconds: 10));
-      _showTempFeedback("⏪ -10s");
+      _showToast("-10s", Icons.replay_10);
     } else {
       _controller!.seekTo(pos + const Duration(seconds: 10));
-      _showTempFeedback("⏩ +10s");
+      _showToast("+10s", Icons.forward_10);
     }
   }
 
-  void _showTempFeedback(String text) {
-    setState(() { _gestureFeedback = text; _showGestureFeedback = true; });
-    Future.delayed(const Duration(milliseconds: 800), () {
+  void _showToast(String text, IconData icon) {
+    setState(() { _gestureFeedback = text; _gestureIcon = icon; _showGestureFeedback = true; });
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(milliseconds: 800), () {
       if (mounted) setState(() => _showGestureFeedback = false);
     });
   }
+
+  void _setLandscape() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  }
+
+  // ==========================================
+  // BUILD UI
+  // ==========================================
 
   @override
   Widget build(BuildContext context) {
@@ -144,13 +267,16 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
             onPlatformViewCreated: _onPlatformViewCreated,
           ),
 
-          // 2. Gesture Overlay Layer
+          // 2. Gesture Overlay Matrix
           GestureDetector(
             onTap: _toggleControls,
-            onDoubleTapDown: (d) => _onDoubleTap(d, context),
-            onVerticalDragStart: _onVerticalDragStart,
-            onVerticalDragUpdate: (d) => _onVerticalDragUpdate(d, context),
-            onVerticalDragEnd: _onVerticalDragEnd,
+            onDoubleTapDown: _onDoubleTap,
+            onPanStart: _onPanStart,
+            onPanUpdate: _onPanUpdate,
+            onPanEnd: _onPanEnd,
+            onLongPressStart: _onLongPressStart,
+            onLongPressEnd: _onLongPressEnd,
+            onLongPressCancel: () => _onLongPressEnd(const LongPressEndDetails()),
             behavior: HitTestBehavior.translucent,
             child: Container(color: Colors.transparent),
           ),
@@ -159,25 +285,30 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
           if (_showGestureFeedback)
             Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(30)),
-                child: Text(_gestureFeedback, style: const TextStyle(color: Colors.white, fontSize: 18)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(16)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_gestureIcon != null) Icon(_gestureIcon, color: Colors.tealAccent, size: 36),
+                    const SizedBox(height: 8),
+                    Text(_gestureFeedback, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
               ),
             ),
 
-          // 4. Buffering Indicator
-          if (_controller != null)
-            StreamBuilder<VideoPlaybackState>(
-              stream: _controller!.stateStream,
-              builder: (ctx, snap) {
-                if (snap.data?.status == 'buffering') {
-                  return const Center(child: CircularProgressIndicator(color: Colors.teal));
-                }
-                return const SizedBox.shrink();
-              },
+          // 4. Lock Overlay Icon (if controls hidden but locked)
+          if (_isLocked && !_showControls)
+            Positioned(
+              left: 32, top: 32,
+              child: IconButton(
+                icon: const Icon(Icons.lock, color: Colors.white38),
+                onPressed: _toggleControls,
+              ),
             ),
 
-          // 5. Controls Overlay
+          // 5. Full Controls Overlay
           if (_showControls && _controller != null)
             _buildControlsOverlay(),
         ],
@@ -187,84 +318,157 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
 
   Widget _buildControlsOverlay() {
     return Container(
-      color: Colors.black45, // Darken background slightly when controls are visible
+      color: Colors.black54, 
       child: SafeArea(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Top Bar
+            // TOP BAR
             Row(
               children: [
                 IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
                 Expanded(child: Text(PathUtils.getName(widget.entry.path), style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis)),
                 if (!_isLocked) ...[
-                  IconButton(icon: const Icon(Icons.picture_in_picture_alt, color: Colors.white), onPressed: () => _controller!.enterPiP()),
                   IconButton(icon: const Icon(Icons.audiotrack, color: Colors.white), onPressed: () => _showTrackSelector(true)),
                   IconButton(icon: const Icon(Icons.subtitles, color: Colors.white), onPressed: () => _showTrackSelector(false)),
                 ],
               ],
             ),
 
-            // Center Play/Pause & Lock
-            Row(
-              mainAxisAlignment: _isLocked ? MainAxisAlignment.start : MainAxisAlignment.center,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(left: 16.0),
-                  child: IconButton(
-                    iconSize: 32,
-                    icon: Icon(_isLocked ? Icons.lock : Icons.lock_open, color: Colors.white),
-                    onPressed: () => setState(() => _isLocked = !_isLocked),
-                  ),
-                ),
-                if (!_isLocked) ...[
-                  const Spacer(),
-                  StreamBuilder<VideoPlaybackState>(
-                    stream: _controller!.stateStream,
-                    builder: (ctx, snap) {
-                      final isPlaying = snap.data?.isPlaying ?? false;
-                      return IconButton(
-                        iconSize: 72,
-                        icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white),
-                        onPressed: () => isPlaying ? _controller!.pause() : _controller!.play(),
-                      );
-                    }
-                  ),
-                  const Spacer(),
-                  const SizedBox(width: 48), // Balance for lock icon
-                ]
-              ],
-            ),
-
-            // Bottom Seek Bar
+            // MIDDLE PLAY/PAUSE
             if (!_isLocked)
               StreamBuilder<VideoPlaybackState>(
                 stream: _controller!.stateStream,
                 builder: (ctx, snap) {
-                  final state = snap.data ?? VideoPlaybackState();
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                    child: Row(
-                      children: [
-                        Text(_formatDuration(state.position), style: const TextStyle(color: Colors.white)),
-                        Expanded(
-                          child: Slider(
-                            activeColor: Colors.tealAccent,
-                            inactiveColor: Colors.white24,
-                            min: 0,
-                            max: state.duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                            value: state.position.inMilliseconds.toDouble().clamp(0, state.duration.inMilliseconds.toDouble()),
-                            onChangeStart: (_) => _hideTimer?.cancel(),
-                            onChangeEnd: (_) => _startHideTimer(),
-                            onChanged: (val) => _controller!.seekTo(Duration(milliseconds: val.toInt())),
-                          ),
-                        ),
-                        Text(_formatDuration(state.duration), style: const TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  );
+                  final isPlaying = snap.data?.isPlaying ?? false;
+                  final isBuffering = snap.data?.status == 'buffering';
+                  return isBuffering 
+                      ? const CircularProgressIndicator(color: Colors.tealAccent)
+                      : IconButton(
+                          iconSize: 72,
+                          icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white),
+                          onPressed: () => isPlaying ? _controller!.pause() : _controller!.play(),
+                        );
                 }
-              )
+              ),
+
+            // BOTTOM BAR GROUPING
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Scrubber Line
+                if (!_isLocked)
+                  StreamBuilder<VideoPlaybackState>(
+                    stream: _controller!.stateStream,
+                    builder: (ctx, snap) {
+                      final state = snap.data ?? VideoPlaybackState();
+                      final maxDur = state.duration.inMilliseconds.toDouble();
+                      final bufDur = state.buffered.inMilliseconds.toDouble();
+                      // Use drag value if scrubbing, else stream position
+                      final currentPos = _scrubberDragValue ?? state.position.inMilliseconds.toDouble();
+                      
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Row(
+                          children: [
+                            Text(_formatDuration(Duration(milliseconds: currentPos.toInt())), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 4,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                                ),
+                                child: Slider(
+                                  activeColor: Colors.tealAccent,
+                                  inactiveColor: Colors.white24,
+                                  secondaryActiveColor: Colors.white54, // Buffer visualization
+                                  secondaryTrackValue: bufDur.clamp(0, maxDur > 0 ? maxDur : 1),
+                                  min: 0,
+                                  max: maxDur > 0 ? maxDur : 1,
+                                  value: currentPos.clamp(0, maxDur > 0 ? maxDur : 1),
+                                  onChangeStart: (val) {
+                                    _hideTimer?.cancel();
+                                    setState(() => _scrubberDragValue = val);
+                                  },
+                                  onChanged: (val) {
+                                    setState(() => _scrubberDragValue = val);
+                                  },
+                                  onChangeEnd: (val) {
+                                    _controller!.seekTo(Duration(milliseconds: val.toInt()));
+                                    setState(() => _scrubberDragValue = null);
+                                    _startHideTimer();
+                                  },
+                                ),
+                              ),
+                            ),
+                            Text(_formatDuration(state.duration), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                          ],
+                        ),
+                      );
+                    }
+                  ),
+
+                // Button Groups
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // LEFT GROUP: Lock, Orientation
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: Icon(_isLocked ? Icons.lock : Icons.lock_open, color: _isLocked ? Colors.tealAccent : Colors.white),
+                            onPressed: () => setState(() { _isLocked = !_isLocked; _startHideTimer(); }),
+                          ),
+                          if (!_isLocked)
+                            IconButton(
+                              icon: Icon(_isLandscape ? Icons.screen_rotation : Icons.screen_lock_portrait, color: Colors.white),
+                              onPressed: _toggleOrientation,
+                            ),
+                        ],
+                      ),
+
+                      // CENTER GROUP: RW, Play/Pause (Small), FF
+                      if (!_isLocked)
+                        StreamBuilder<VideoPlaybackState>(
+                          stream: _controller!.stateStream,
+                          builder: (ctx, snap) {
+                            final state = snap.data ?? VideoPlaybackState();
+                            return Row(
+                              children: [
+                                IconButton(icon: const Icon(Icons.replay_10, color: Colors.white), onPressed: () => _controller!.seekTo(state.position - const Duration(seconds: 10))),
+                                IconButton(
+                                  icon: Icon(state.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                                  onPressed: () => state.isPlaying ? _controller!.pause() : _controller!.play(),
+                                ),
+                                IconButton(icon: const Icon(Icons.forward_10, color: Colors.white), onPressed: () => _controller!.seekTo(state.position + const Duration(seconds: 10))),
+                              ],
+                            );
+                          }
+                        ),
+
+                      // RIGHT GROUP: Aspect Ratio, PiP
+                      if (!_isLocked)
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: Icon(_aspectRatioIcons[_aspectRatioMode], color: Colors.white),
+                              onPressed: _cycleAspectRatio,
+                              tooltip: 'Aspect Ratio',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.picture_in_picture_alt, color: Colors.white),
+                              onPressed: () => _controller!.enterPiP(),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            )
           ],
         ),
       ),
@@ -272,12 +476,14 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
   }
 
   void _showTrackSelector(bool isAudio) {
+    _hideTimer?.cancel();
     final state = _controller!.value;
     final tracks = isAudio ? state.audioTracks : state.subtitleTracks;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.grey[900],
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -302,7 +508,7 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
           ],
         ),
       ),
-    );
+    ).then((_) => _startHideTimer());
   }
 
   String _formatDuration(Duration d) {
