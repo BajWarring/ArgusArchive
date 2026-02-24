@@ -66,9 +66,6 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
   bool _showGestureFeedback = false;
   Timer? _toastTimer;
 
-  // Speed Boost
-  bool _isSpeedBoosted = false;
-
   @override
   void initState() {
     super.initState();
@@ -138,10 +135,13 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
     final dx = details.globalPosition.dx - _dragStartPos.dx;
     final dy = details.globalPosition.dy - _dragStartPos.dy;
 
-    // Strict 20px Axis Lock Threshold
+    // Strict 20px Axis Lock Threshold (Fixed curly braces for analysis)
     if (_currentAxis == GestureAxis.none) {
-      if (dx.abs() > 20) _currentAxis = GestureAxis.horizontal;
-      else if (dy.abs() > 20) _currentAxis = GestureAxis.vertical;
+      if (dx.abs() > 20) {
+        _currentAxis = GestureAxis.horizontal;
+      } else if (dy.abs() > 20) {
+        _currentAxis = GestureAxis.vertical;
+      }
     }
 
     if (_currentAxis == GestureAxis.horizontal) {
@@ -207,7 +207,6 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
     HapticFeedback.lightImpact();
     _controller?.setSpeed(2.0);
     setState(() {
-      _isSpeedBoosted = true;
       _showGestureFeedback = true;
       _gestureFeedback = "2x Speed";
       _gestureIcon = Icons.speed;
@@ -218,7 +217,6 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
     if (_isLocked || _controller == null) return;
     _controller?.setSpeed(1.0);
     setState(() {
-      _isSpeedBoosted = false;
       _showGestureFeedback = false;
     });
   }
@@ -329,6 +327,22 @@ class _VideoPlayerScreenState extends State<_VideoPlayerScreen> {
                 IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
                 Expanded(child: Text(PathUtils.getName(widget.entry.path), style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis)),
                 if (!_isLocked) ...[
+                  // NEW: 3-dots Menu for Settings/Equalizer
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    color: const Color(0xFF1E1E1E),
+                    onSelected: (value) {
+                      _hideTimer?.cancel(); // Pause hide timer while viewing snackbar
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('$value configuration coming soon!')),
+                      );
+                      _startHideTimer();
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(value: 'Equalizer', child: Row(children: [Icon(Icons.equalizer, size: 20), SizedBox(width: 12), Text('Equalizer')])),
+                      const PopupMenuItem(value: 'Settings', child: Row(children: [Icon(Icons.settings, size: 20), SizedBox(width: 12), Text('Player Settings')])),
+                    ],
+                  ),
                   IconButton(icon: const Icon(Icons.audiotrack, color: Colors.white), onPressed: () => _showTrackSelector(true)),
                   IconButton(icon: const Icon(Icons.subtitles, color: Colors.white), onPressed: () => _showTrackSelector(false)),
                 ],
