@@ -54,8 +54,14 @@ final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
 final indexServiceProvider = FutureProvider<IndexService>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final db = await ref.watch(searchDatabaseProvider.future);
-  return IndexService(adapter: adapter, searchDb: db);
+  final service = IndexService(adapter: adapter, searchDb: db);
+  
+  // Kick off the auto-start in the background automatically
+  service.autoStart('/storage/emulated/0');
+  
+  return service;
 });
+
 
 // 7. Global Transfer Queue Singleton
 final transferQueueProvider = Provider<TransferQueue>((ref) {
