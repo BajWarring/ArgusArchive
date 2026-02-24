@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'presentation/splash_ui/root_navigator.dart';
 import 'services/sub_app/shortcut_service.dart';
-import 'services/video_player_app/video_library_screen.dart';
+import 'presentation/subapp_video_ui/video_library_screen.dart'; // Updated path to the new UI
 
 // Global Key to allow navigation from outside the standard widget tree
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -57,9 +57,9 @@ class _ArgusArchiveAppState extends State<ArgusArchiveApp> {
       theme: ThemeData(
         brightness: Brightness.dark,
         primarySwatch: Colors.teal,
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: const Color(0xFF101622), // Matched to new HTML background
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
+          backgroundColor: Color(0xFF1D2636), // Matched to new HTML surface
           elevation: 0,
         ),
       ),
