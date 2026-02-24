@@ -1,4 +1,4 @@
-package com.app.argusarchive // IMPORTANT: Make sure this matches your exact package name!
+package com.app.argusarchive
 
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -10,13 +10,23 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 
 class MainActivity: FlutterActivity() {
-    // This channel name must exactly match the channel name in your Dart ApkIconService
-    private val CHANNEL = "com.app.argusarchive/apk_icon"
+    private val APK_CHANNEL = "com.app.argusarchive/apk_icon"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        // ==========================================
+        // 1. VIDEO PLAYER: Register the Native ExoPlayer PlatformView
+        // ==========================================
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "com.app.argusarchive/video_player",
+            VideoPlayerViewFactory(flutterEngine.dartExecutor.binaryMessenger)
+        )
+        
+        // ==========================================
+        // 2. APK ICON: Set up the existing Method Channel
+        // ==========================================
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APK_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "getApkIcon") {
                 val path = call.argument<String>("path")
                 if (path != null) {
@@ -24,7 +34,7 @@ class MainActivity: FlutterActivity() {
                     if (iconBytes != null) {
                         result.success(iconBytes)
                     } else {
-                        // Pass null back so Flutter knows it safely failed and can use the fallback icon
+                        // Pass null back so Flutter knows it safely failed and uses the fallback icon
                         result.success(null) 
                     }
                 } else {
@@ -36,6 +46,7 @@ class MainActivity: FlutterActivity() {
         }
     }
 
+    // Safely extracts the APK icon using your previous null-safety fixes
     private fun getApkIconBytes(apkPath: String): ByteArray? {
         return try {
             val pm: PackageManager = context.packageManager
@@ -44,7 +55,7 @@ class MainActivity: FlutterActivity() {
             // Safely extract applicationInfo
             val appInfo = packageInfo?.applicationInfo
             
-            // The FIX: Using '?.' to satisfy Kotlin's strict null safety
+            // Using '?.' to satisfy Kotlin's strict null safety
             appInfo?.sourceDir = apkPath
             appInfo?.publicSourceDir = apkPath
             
