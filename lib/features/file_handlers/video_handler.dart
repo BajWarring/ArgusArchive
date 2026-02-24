@@ -92,12 +92,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _hideTimer?.cancel();
     // 3 Second auto-hide per requirements
     _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() {
-        _showControls = false;
-        _showLockOverlay = false;
-      });
+      if (mounted) {
+        setState(() {
+          _showControls = false;
+          _showLockOverlay = false;
+        });
+      }
     });
   }
+
 
   // INSTANT TAP TOGGLE BUGFIX
   void _handleTap() {
