@@ -84,7 +84,8 @@ class VideoPlayerController {
       _stateController.add(_state);
     });
   }
-
+ 
+  Future<void> setAspectRatio(int mode) => _methodChannel.invokeMethod('setAspectRatio', {'mode': mode});
   Future<void> play() => _methodChannel.invokeMethod('play');
   Future<void> pause() => _methodChannel.invokeMethod('pause');
   Future<void> seekTo(Duration pos) => _methodChannel.invokeMethod('seekTo', {'position': pos.inMilliseconds});
