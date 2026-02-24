@@ -95,6 +95,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
     setState(() => _isLandscape = !_isLandscape);
   }
+    void _setLandscape() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  }
+
 
   // ==========================================
   // GESTURE MATRIX (Runs even when overlay visible)
