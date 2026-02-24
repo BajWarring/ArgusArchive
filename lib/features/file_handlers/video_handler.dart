@@ -74,13 +74,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     });
   }
 
-  // INSTANT TAP TOGGLE
+    // INSTANT TAP TOGGLE
   void _toggleControls() {
     if (_isLocked) return; // Do nothing if locked
     setState(() => _showControls = !_showControls);
-    if (_showControls) _startHideTimer();
-    else _hideTimer?.cancel();
+    if (_showControls) {
+      _startHideTimer();
+    } else {
+      _hideTimer?.cancel();
+    }
   }
+
 
   // VLC-Style Orientation Toggle
   void _toggleOrientation() {
