@@ -100,7 +100,8 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> {
       case VideoTab.video: return const VideoGridView();
       case VideoTab.browse: return BrowseView(onOpenExplorer: () => _switchTab(VideoTab.explorer));
       case VideoTab.explorer: return const VideoExplorerView();
-      case VideoTab.settings: return const Center(child: Text("Settings Stub"));
+      case VideoTab.settings: return const VideoSettingsView();
+
     }
   }
 }
