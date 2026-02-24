@@ -84,6 +84,13 @@ class VideoPlayerController {
       _stateController.add(_state);
     });
   }
+
+  // Triggers instant live seeking for frame-preview during drag
+  Future<void> liveSeekTo(Duration pos) => _methodChannel.invokeMethod('seekTo', {'position': pos.inMilliseconds});
+  
+  // Subtitle synchronization (Delay)
+  Future<void> setSubtitleDelay(int delayMs) => _methodChannel.invokeMethod('setSubtitleDelay', {'delayMs': delayMs});
+
  
   Future<void> setAspectRatio(int mode) => _methodChannel.invokeMethod('setAspectRatio', {'mode': mode});
   Future<void> play() => _methodChannel.invokeMethod('play');
