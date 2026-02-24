@@ -1,11 +1,20 @@
 package com.app.argusarchive
 
+import android.app.Activity
+import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.ContextWrapper
+import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Rational
 import android.view.View
+import android.view.WindowManager
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -18,7 +27,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
 
 class NativeVideoPlayer(
-    context: Context,
+    private val context: Context,
     viewId: Int,
     creationParams: Map<String?, Any?>?,
     messenger: BinaryMessenger
@@ -26,21 +35,24 @@ class NativeVideoPlayer(
 
     private val playerView: PlayerView = PlayerView(context)
     private val exoPlayer: ExoPlayer
-    private val trackSelector = DefaultTrackSelector(context)
+    private val trackSelector: DefaultTrackSelector
     
     private val methodChannel: MethodChannel
     private val eventChannel: EventChannel
     private var eventSink: EventChannel.EventSink? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     init {
-        // High-performance hardware acceleration & FFmpeg hook
+        trackSelector = DefaultTrackSelector(context)
+        
+        // Premium Decoder Setup (Hardware + FFmpeg Extension Priority)
         val renderersFactory = DefaultRenderersFactory(context)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
 
-        // Tuned for fast instant-seeking
+        // Aggressive buffering for instant seek
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15000, 50000, 1500, 2000)
+            .setBufferDurationsMs(15000, 50000, 2500, 5000)
             .build()
 
         exoPlayer = ExoPlayer.Builder(context, renderersFactory)
@@ -49,9 +61,8 @@ class NativeVideoPlayer(
             .build()
 
         exoPlayer.setSeekParameters(SeekParameters.CLOSEST_SYNC)
-        
         playerView.player = exoPlayer
-        playerView.useController = false // We handle UI in Flutter
+        playerView.useController = false
 
         methodChannel = MethodChannel(messenger, "com.app.argusarchive/video_player_$viewId")
         methodChannel.setMethodCallHandler(this)
@@ -62,36 +73,64 @@ class NativeVideoPlayer(
                 eventSink = events
                 startProgressTimer()
             }
-            override fun onCancel(arguments: Any?) {
-                eventSink = null
-            }
+            override fun onCancel(arguments: Any?) { eventSink = null }
         })
 
-        // Listen for buffering and state changes
-        exoPlayer.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                eventSink?.success(mapOf("event" to "state", "state" to playbackState))
-            }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                eventSink?.success(mapOf("event" to "isPlaying", "isPlaying" to isPlaying))
-            }
-        })
+        setupPlayerListeners()
 
-        // Load Initial Path
         val path = creationParams?.get("path") as? String
         if (path != null) {
-            val mediaItem = MediaItem.fromUri(path)
-            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.setMediaItem(MediaItem.fromUri(path))
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
         }
     }
 
-    override fun getView(): View = playerView
+    private fun setupPlayerListeners() {
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                val stateStr = when (state) {
+                    Player.STATE_IDLE -> "idle"
+                    Player.STATE_BUFFERING -> "buffering"
+                    Player.STATE_READY -> "ready"
+                    Player.STATE_ENDED -> "ended"
+                    else -> "unknown"
+                }
+                eventSink?.success(mapOf("event" to "state", "state" to stateStr))
+            }
+            
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                eventSink?.success(mapOf("event" to "isPlaying", "isPlaying" to isPlaying))
+            }
 
-    override fun dispose() {
-        handler.removeCallbacksAndMessages(null)
-        exoPlayer.release()
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                // Broadcast available tracks to Flutter
+                val audioTracks = mutableListOf<Map<String, Any>>()
+                val subTracks = mutableListOf<Map<String, Any>>()
+                
+                for (group in tracks.groups) {
+                    for (i in 0 until group.length) {
+                        val format = group.getTrackFormat(i)
+                        val isSelected = group.isTrackSelected(i)
+                        val trackMap = mapOf(
+                            "id" to "${group.mediaTrackGroup.hashCode()}_$i",
+                            "language" to (format.language ?: "Unknown"),
+                            "label" to (format.label ?: "Track ${i+1}"),
+                            "selected" to isSelected,
+                            "groupIndex" to tracks.groups.indexOf(group),
+                            "trackIndex" to i
+                        )
+                        if (group.type == C.TRACK_TYPE_AUDIO) audioTracks.add(trackMap)
+                        if (group.type == C.TRACK_TYPE_TEXT) subTracks.add(trackMap)
+                    }
+                }
+                eventSink?.success(mapOf("event" to "tracks", "audio" to audioTracks, "subs" to subTracks))
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                eventSink?.success(mapOf("event" to "error", "message" to error.message))
+            }
+        })
     }
 
     override fun onMethodCall(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
@@ -99,8 +138,8 @@ class NativeVideoPlayer(
             "play" -> { exoPlayer.play(); result.success(null) }
             "pause" -> { exoPlayer.pause(); result.success(null) }
             "seekTo" -> {
-                val position = call.argument<Number>("position")?.toLong() ?: 0L
-                exoPlayer.seekTo(position)
+                val pos = call.argument<Number>("position")?.toLong() ?: 0L
+                exoPlayer.seekTo(pos)
                 result.success(null)
             }
             "setSpeed" -> {
@@ -108,8 +147,61 @@ class NativeVideoPlayer(
                 exoPlayer.setPlaybackSpeed(speed)
                 result.success(null)
             }
+            "selectTrack" -> {
+                val groupIndex = call.argument<Int>("groupIndex") ?: return
+                val trackIndex = call.argument<Int>("trackIndex") ?: return
+                val isAudio = call.argument<Boolean>("isAudio") ?: true
+                
+                val type = if (isAudio) C.TRACK_TYPE_AUDIO else C.TRACK_TYPE_TEXT
+                trackSelector.parameters = trackSelector.parameters.buildUpon()
+                    .clearOverridesOfType(type)
+                    .addOverride(TrackSelectionOverride(exoPlayer.currentTracks.groups[groupIndex].mediaTrackGroup, trackIndex))
+                    .build()
+                result.success(null)
+            }
+            "disableSubtitles" -> {
+                trackSelector.parameters = trackSelector.parameters.buildUpon()
+                    .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+                result.success(null)
+            }
+            "enterPiP" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val activity = getActivity()
+                    val params = PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(16, 9))
+                        .build()
+                    activity?.enterPictureInPictureMode(params)
+                }
+                result.success(null)
+            }
+            "setBrightness" -> {
+                val brightness = call.argument<Double>("brightness")?.toFloat() ?: 0.5f
+                val window = getActivity()?.window
+                val layoutParams = window?.attributes
+                layoutParams?.screenBrightness = brightness
+                window?.attributes = layoutParams
+                result.success(null)
+            }
+            "setVolume" -> {
+                val vol = call.argument<Double>("volume") ?: 0.5
+                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (vol * max).toInt(), 0)
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
+    }
+
+    private fun getActivity(): Activity? {
+        var ctx = context
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return null
     }
 
     private fun startProgressTimer() {
@@ -122,9 +214,15 @@ class NativeVideoPlayer(
                         "duration" to exoPlayer.duration,
                         "buffered" to exoPlayer.bufferedPosition
                     ))
-                    handler.postDelayed(this, 500) // 500ms updates
+                    handler.postDelayed(this, 250) // High refresh rate for smooth slider
                 }
             }
         })
+    }
+
+    override fun getView(): View = playerView
+    override fun dispose() {
+        handler.removeCallbacksAndMessages(null)
+        exoPlayer.release()
     }
 }
