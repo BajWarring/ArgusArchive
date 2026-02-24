@@ -8,7 +8,8 @@ import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../services/transfer/transfer_task.dart';
 import '../../services/operations/file_operations_service.dart';
-import '../../services/operations/archive_service.dart'; // Added missing import
+import '../../services/operations/archive_service.dart';
+import '../../services/sub_app/shortcut_service.dart'; // Added for video shortcut
 
 import 'providers.dart';
 import 'header_icons_debug.dart';
@@ -44,6 +45,8 @@ class FileActionHandlerDebug {
       final zipName = await FileDialogsDebug.showZipNameDialog(context, defaultName);
       
       if (zipName != null && zipName.isNotEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compressing...'))); 
         final zipDest = p.join(p.dirname(paths.first), '$zipName.zip');
         List<String> queuedTaskIds = [];
 
@@ -87,6 +90,11 @@ class FileActionHandlerDebug {
       final indexer = await ref.read(indexServiceProvider.future);
       await indexer.start(rootPath: '/storage/emulated/0', rebuild: true);
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started!')));
+    } else if (value == 'shortcut_video') {
+      final success = await ShortcutService.createVideoPlayerShortcut();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Shortcut requested!' : 'Failed to add shortcut.')));
+      }
     } else if (value == 'new_folder' || value == 'new_file') {
       final isFolder = value == 'new_folder';
       final name = await FileDialogsDebug.showCreateDialog(context, isFolder ? 'New Folder' : 'New File');
@@ -218,4 +226,4 @@ class FileActionHandlerDebug {
       ref.read(clipboardProvider.notifier).state = ClipboardState();
     }
   }
-} // Fixed: Added missing class closing brace!
+}
