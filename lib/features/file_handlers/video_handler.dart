@@ -35,28 +35,29 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   VideoPlayerController? _controller;
   bool _showControls = true;
+  bool _showLockOverlay = false;
   bool _isLocked = false;
   Timer? _hideTimer;
   
   // VLC Orientation Logic
   bool _isLandscape = true;
   int _aspectRatioMode = 0; 
-  final List<String> _aspectRatioLabels = ['Fit', 'Stretch', 'Crop'];
-  final List<IconData> _aspectRatioIcons = [Icons.aspect_ratio, Icons.fit_screen, Icons.crop];
+  final List<String> _aspectRatioLabels = ['Fit', 'Stretch', 'Crop', 'Original'];
+  final List<IconData> _aspectRatioIcons = [Icons.aspect_ratio, Icons.fit_screen, Icons.crop, Icons.center_focus_strong];
 
   // Gesture Matrix State
   GestureAxis _currentAxis = GestureAxis.none;
   Offset _dragStartPos = Offset.zero;
+  
+  // Vertical Gesture
   double _currentVolume = 0.5;
   double _currentBrightness = 0.5;
   bool _isLeftHalfDrag = false;
   
+  // Horizontal Gesture (Seek)
   Duration _startSeekPos = Duration.zero;
   Duration _targetSeekPos = Duration.zero;
-  
-  // Scrubber State
   double? _scrubberDragValue;
-  int _lastSeekTime = 0;
 
   // Visual Feedback
   String _gestureFeedback = "";
@@ -64,6 +65,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _showGestureFeedback = false;
   Timer? _toastTimer;
 
+  // Subtitle State
   int _subtitleDelayMs = 0;
 
   @override
@@ -88,24 +90,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _startHideTimer() {
     _hideTimer?.cancel();
+    // 3 Second auto-hide per requirements
     _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && _showControls) setState(() => _showControls = false);
+      if (mounted) setState(() {
+        _showControls = false;
+        _showLockOverlay = false;
+      });
     });
   }
 
-  // INSTANT TAP TOGGLE
-  void _toggleControls() {
-    setState(() => _showControls = !_showControls);
-    if (_showControls) {
-      _startHideTimer();
-    } else {
-      _hideTimer?.cancel();
-    }
+  // INSTANT TAP TOGGLE BUGFIX
+  void _handleTap() {
+    setState(() {
+      if (_showControls || _showLockOverlay) {
+        // If anything is visible, instantly hide it
+        _showControls = false;
+        _showLockOverlay = false;
+        _hideTimer?.cancel();
+      } else {
+        // If hidden, show the appropriate overlay
+        if (_isLocked) {
+          _showLockOverlay = true;
+        } else {
+          _showControls = true;
+        }
+        _startHideTimer();
+      }
+    });
   }
 
   void _toggleOrientation() {
     if (_isLandscape) {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
     } else {
       SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     }
@@ -148,7 +164,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       final screenWidth = MediaQuery.of(context).size.width;
       final duration = _controller!.value.duration;
       
-      final seekPercentage = (dx / screenWidth) * 0.3;
+      final seekPercentage = (dx / screenWidth) * 0.3; // Velocity curve
       final seekDelta = Duration(milliseconds: (duration.inMilliseconds * seekPercentage).toInt());
       
       _targetSeekPos = _startSeekPos + seekDelta;
@@ -160,7 +176,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       
       setState(() {
         _showGestureFeedback = true;
-        _gestureFeedback = "$sign${deltaSec}s\n${_formatDuration(_targetSeekPos)}";
+        _gestureFeedback = "$sign${deltaSec}s\n[${_formatDuration(_targetSeekPos)}]";
         _gestureIcon = deltaSec > 0 ? Icons.fast_forward : Icons.fast_rewind;
       });
       
@@ -213,20 +229,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() => _showGestureFeedback = false);
   }
 
-  void _onDoubleTap(TapDownDetails details) {
-    if (_isLocked || _controller == null) return;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final pos = _controller!.value.position;
-    
-    if (details.globalPosition.dx < screenWidth / 2) {
-      _controller!.seekTo(pos - const Duration(seconds: 10));
-      _showToast("-10s", Icons.replay_10);
-    } else {
-      _controller!.seekTo(pos + const Duration(seconds: 10));
-      _showToast("+10s", Icons.forward_10);
-    }
-  }
-
   void _showToast(String text, IconData icon) {
     setState(() { _gestureFeedback = text; _gestureIcon = icon; _showGestureFeedback = true; });
     _toastTimer?.cancel();
@@ -243,59 +245,67 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: _toggleControls,
-        onDoubleTapDown: _onDoubleTap,
-        onPanStart: _onPanStart,
-        onPanUpdate: _onPanUpdate,
-        onPanEnd: _onPanEnd,
-        onLongPressStart: _onLongPressStart,
-        onLongPressEnd: _onLongPressEnd,
-        onLongPressCancel: () => _onLongPressEnd(const LongPressEndDetails()),
-        behavior: HitTestBehavior.translucent, // Catches gestures globally without blocking buttons
-        child: Stack(
-          children: [
-            AndroidView(
-              viewType: 'com.app.argusarchive/video_player',
-              creationParams: {'path': widget.entry.path},
-              creationParamsCodec: const StandardMessageCodec(),
-              onPlatformViewCreated: _onPlatformViewCreated,
+      body: Stack(
+        children: [
+          AndroidView(
+            viewType: 'com.app.argusarchive/video_player',
+            creationParams: {'path': widget.entry.path},
+            creationParamsCodec: const StandardMessageCodec(),
+            onPlatformViewCreated: _onPlatformViewCreated,
+          ),
+
+          if (_showControls || _showLockOverlay)
+            Container(color: Colors.black54),
+
+          // Central Gesture Layer (Handles taps AND pan, positioned to not block buttons)
+          GestureDetector(
+            onTap: _handleTap,
+            onPanStart: _onPanStart,
+            onPanUpdate: _onPanUpdate,
+            onPanEnd: _onPanEnd,
+            onLongPressStart: _onLongPressStart,
+            onLongPressEnd: _onLongPressEnd,
+            onLongPressCancel: () => _onLongPressEnd(const LongPressEndDetails()),
+            behavior: HitTestBehavior.translucent,
+            child: Container(color: Colors.transparent),
+          ),
+
+          if (_showGestureFeedback)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(16)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_gestureIcon != null) Icon(_gestureIcon, color: Colors.tealAccent, size: 36),
+                    const SizedBox(height: 8),
+                    Text(_gestureFeedback, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
             ),
 
-            if (_showControls && !_isLocked)
-              Container(color: Colors.black45),
-
-            if (_showGestureFeedback)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(16)),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_gestureIcon != null) Icon(_gestureIcon, color: Colors.tealAccent, size: 36),
-                      const SizedBox(height: 8),
-                      Text(_gestureFeedback, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
+          if (_showLockOverlay && _isLocked)
+            Positioned(
+              left: 32, top: 32,
+              child: IconButton(
+                iconSize: 36,
+                icon: const Icon(Icons.lock, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    _isLocked = false;
+                    _showLockOverlay = false;
+                    _showControls = true;
+                  });
+                  _startHideTimer();
+                },
               ),
+            ),
 
-            // Lock Overlay Icon
-            if (_isLocked && _showControls)
-              Positioned(
-                left: 32, top: 32,
-                child: IconButton(
-                  icon: const Icon(Icons.lock, color: Colors.white, size: 32),
-                  onPressed: () => setState(() { _isLocked = false; _startHideTimer(); }),
-                ),
-              ),
-
-            // Main Interactive UI
-            if (_showControls && !_isLocked && _controller != null)
-              _buildInteractiveControls(),
-          ],
-        ),
+          if (_showControls && !_isLocked && _controller != null)
+            _buildInteractiveControls(),
+        ],
       ),
     );
   }
@@ -305,18 +315,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // TOP BAR: CC Moved to far right, 3-dots removed
+          // TOP BAR: Title, Audio, 3-dots, CC
           Row(
             children: [
               IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
               Expanded(child: Text(PathUtils.getName(widget.entry.path), style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis)),
               
+              IconButton(icon: const Icon(Icons.audiotrack, color: Colors.white), onPressed: () => _showTrackSelector(true)),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: Colors.white),
                 color: const Color(0xFF1E1E1E),
                 onSelected: (value) {
                   _hideTimer?.cancel();
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$value configuration coming soon!')));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$value settings pending.')));
                   _startHideTimer();
                 },
                 itemBuilder: (context) => [
@@ -324,7 +335,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   const PopupMenuItem(value: 'Settings', child: Row(children: [Icon(Icons.settings, size: 20), SizedBox(width: 12), Text('Player Settings')])),
                 ],
               ),
-              IconButton(icon: const Icon(Icons.audiotrack, color: Colors.white), onPressed: () => _showTrackSelector(true)),
               IconButton(icon: const Icon(Icons.closed_caption, color: Colors.white, size: 28), onPressed: () => _showSubtitleTools()),
               const SizedBox(width: 8),
             ],
@@ -346,7 +356,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         IconButton(iconSize: 56, icon: const Icon(Icons.skip_previous, color: Colors.white), onPressed: () => _controller!.seekTo(pos - const Duration(seconds: 10))),
                         const SizedBox(width: 32),
                         IconButton(
-                          iconSize: 110, // Increased size by ~15%
+                          iconSize: 110, // 15% larger
                           icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white),
                           onPressed: () => isPlaying ? _controller!.pause() : _controller!.play(),
                         ),
@@ -362,7 +372,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             padding: const EdgeInsets.only(bottom: 16.0, left: 16, right: 16),
             child: Row(
               children: [
-                IconButton(icon: const Icon(Icons.lock_open, color: Colors.white), onPressed: () => setState(() { _isLocked = true; _showControls = false; })),
+                IconButton(icon: const Icon(Icons.lock_open, color: Colors.white), onPressed: () => setState(() { _isLocked = true; _showControls = false; _hideTimer?.cancel(); })),
                 IconButton(icon: Icon(_isLandscape ? Icons.screen_rotation : Icons.screen_lock_portrait, color: Colors.white), onPressed: _toggleOrientation),
                 
                 Expanded(
@@ -399,13 +409,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                 },
                                 onChanged: (val) {
                                   setState(() => _scrubberDragValue = val);
-                                  
-                                  // Throttled Live Preview (max 1 frame update per 150ms) to prevent lag
-                                  final now = DateTime.now().millisecondsSinceEpoch;
-                                  if (now - _lastSeekTime > 150) {
-                                    _lastSeekTime = now;
-                                    _controller!.liveSeekTo(Duration(milliseconds: val.toInt()));
-                                  }
+                                  // Removed liveSeekTo to prevent lag during dragging
                                 },
                                 onChangeEnd: (val) {
                                   _controller!.seekTo(Duration(milliseconds: val.toInt()));
@@ -427,7 +431,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   icon: Icon(_aspectRatioIcons[_aspectRatioMode], color: Colors.white),
                   onPressed: () {
                     setState(() {
-                      _aspectRatioMode = (_aspectRatioMode + 1) % 3;
+                      _aspectRatioMode = (_aspectRatioMode + 1) % 4; // Added original mode
                       _controller?.setAspectRatio(_aspectRatioMode);
                       _showToast(_aspectRatioLabels[_aspectRatioMode], _aspectRatioIcons[_aspectRatioMode]);
                     });
@@ -484,31 +488,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       IconButton(
                         icon: const Icon(Icons.remove_circle_outline, color: Colors.white),
                         onPressed: () {
-                          setModalState(() => _subtitleDelayMs -= 100);
-                          _controller!.setSubtitleDelay(_subtitleDelayMs);
+                          if (_subtitleDelayMs > -5000) {
+                            setModalState(() => _subtitleDelayMs -= 100);
+                            _controller!.setSubtitleDelay(_subtitleDelayMs);
+                          }
                         }
                       ),
                       Text('${_subtitleDelayMs > 0 ? "+" : ""}$_subtitleDelayMs ms', style: const TextStyle(color: Colors.white, fontSize: 16)),
                       IconButton(
                         icon: const Icon(Icons.add_circle_outline, color: Colors.white),
                         onPressed: () {
-                          setModalState(() => _subtitleDelayMs += 100);
-                          _controller!.setSubtitleDelay(_subtitleDelayMs);
+                          if (_subtitleDelayMs < 5000) {
+                            setModalState(() => _subtitleDelayMs += 100);
+                            _controller!.setSubtitleDelay(_subtitleDelayMs);
+                          }
                         }
                       ),
                     ],
                   ),
                   const Divider(color: Colors.white24),
 
-                  const Text('Online Search', style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold)),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.cloud_download, color: Colors.blue),
-                    title: const Text('Search OpenSubtitles', style: TextStyle(color: Colors.white)),
-                    subtitle: Text('Query: ${PathUtils.getName(widget.entry.path)}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    title: const Text('Search Online (OpenSubtitles)', style: TextStyle(color: Colors.white)),
                     onTap: () {
                       Navigator.pop(ctx);
-                      _showOpenSubtitlesSearch(PathUtils.getName(widget.entry.path));
+                      _showOnlineSubtitleSearch();
                     },
                   ),
                 ],
@@ -520,21 +526,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     ).then((_) => _startHideTimer());
   }
 
-  void _showOpenSubtitlesSearch(String filename) {
+  void _showOnlineSubtitleSearch() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('OpenSubtitles'),
+        title: const Text('OpenSubtitles Search'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(),
+            TextField(
+              decoration: InputDecoration(
+                hintText: PathUtils.getName(widget.entry.path),
+                suffixIcon: const Icon(Icons.search),
+              ),
+            ),
             const SizedBox(height: 16),
-            Text('Searching for:\n$filename', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+            const Text('API Integration Pending. Simulated Results:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ListTile(title: const Text('English (SRT)'), trailing: const Icon(Icons.download), onTap: () => Navigator.pop(ctx)),
+            ListTile(title: const Text('Spanish (SRT)'), trailing: const Icon(Icons.download), onTap: () => Navigator.pop(ctx)),
           ],
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel'))],
-      )
+      ),
     );
   }
 
