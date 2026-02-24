@@ -5,6 +5,7 @@ import 'views/browser_view.dart';
 import 'views/search_view.dart';
 import 'views/settings_view.dart';
 import 'widgets/main_header.dart';
+import 'widgets/operation_bar.dart';
 
 enum MainView { home, browser, search, settings }
 
@@ -19,6 +20,9 @@ class _MainScreenState extends State<MainScreen> {
   MainView _currentView = MainView.home;
   bool _isSelectionMode = false;
   int _selectionCount = 0;
+  
+  // Operation Bar State
+  bool _isCopyingState = false;
 
   void _navigateTo(MainView view) {
     setState(() => _currentView = view);
@@ -34,7 +38,7 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
     if (_currentView == MainView.browser) {
-      // Stub: Check Path Stack length here
+      // Stub: Jump back to home if path stack is empty
       _navigateTo(MainView.home);
     }
   }
@@ -49,26 +53,54 @@ class _MainScreenState extends State<MainScreen> {
       child: Scaffold(
         backgroundColor: isDark ? ArgusColors.bgDark : ArgusColors.bgLight,
         body: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              MainHeader(
-                currentView: _currentView,
-                isSelectionMode: _isSelectionMode,
-                selectionCount: _selectionCount,
-                onBack: _handleHardwareBack,
-                onSearchTap: () => _navigateTo(MainView.search),
-                onCloseSearch: () => _navigateTo(MainView.home),
-                onToggleSelection: () => setState(() => _isSelectionMode = !_isSelectionMode),
+              // 1. The Main Content
+              Column(
+                children: [
+                  MainHeader(
+                    currentView: _currentView,
+                    isSelectionMode: _isSelectionMode,
+                    selectionCount: _selectionCount,
+                    onBack: _handleHardwareBack,
+                    onSearchTap: () => _navigateTo(MainView.search),
+                    onCloseSearch: () => _navigateTo(MainView.home),
+                    onToggleSelection: () => setState(() => _isSelectionMode = !_isSelectionMode),
+                  ),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: _buildCurrentView(),
+                    ),
+                  ),
+                ],
               ),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: _buildCurrentView(),
-                ),
-              ),
+              
+              // 2. The Floating Operation Bar (Shows when copying/cutting)
+              if (_isCopyingState)
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: OperationBar(
+                    operationTitle: 'Copying',
+                    itemName: 'Selected Files',
+                    icon: Icons.content_copy,
+                    onCancel: () => setState(() => _isCopyingState = false),
+                    onPaste: () {
+                      setState(() => _isCopyingState = false);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pasted successfully!')));
+                    },
+                  ),
+                )
             ],
           ),
         ),
+        
+        // TEMPORARY: A floating button to test the operation bar so you can see it working
+        floatingActionButton: _currentView == MainView.browser ? FloatingActionButton(
+          onPressed: () => setState(() => _isCopyingState = true),
+          backgroundColor: ArgusColors.primary,
+          child: const Icon(Icons.copy, color: Colors.white),
+        ) : null,
       ),
     );
   }
