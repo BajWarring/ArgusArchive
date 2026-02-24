@@ -9,6 +9,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Icon
 import android.os.Build
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -17,32 +18,50 @@ import java.io.ByteArrayOutputStream
 class MainActivity: FlutterActivity() {
     private val APK_CHANNEL = "com.app.argusarchive/apk_icon"
     private val SHORTCUT_CHANNEL = "com.app.argusarchive/shortcuts"
+    private var flutterChannel: MethodChannel? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setupDynamicShortcuts()
+    }
+
+    // Creates the shortcut that appears when you long-press the App Icon on the launcher
+    private fun setupDynamicShortcuts() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
+            val shortcutManager = getSystemService(ShortcutManager::class.java)
+            if (shortcutManager != null) {
+                val shortcutIntent = Intent(this, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    putExtra("route", "/video_library") // Route to sub-app
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                }
+                val dynamicShortcut = ShortcutInfo.Builder(this, "video_library_dynamic")
+                    .setShortLabel("Video Player")
+                    .setLongLabel("Open Video Player")
+                    .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher)) // Uses app icon
+                    .setIntent(shortcutIntent)
+                    .build()
+                shortcutManager.dynamicShortcuts = listOf(dynamicShortcut)
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        
-        // ==========================================
-        // 1. VIDEO PLAYER: Register the Native ExoPlayer PlatformView
-        // ==========================================
+        flutterChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHORTCUT_CHANNEL)
+
+        // 1. VIDEO PLAYER
         flutterEngine.platformViewsController.registry.registerViewFactory(
             "com.app.argusarchive/video_player",
             VideoPlayerViewFactory(flutterEngine.dartExecutor.binaryMessenger)
         )
         
-        // ==========================================
-        // 2. APK ICON: Set up the existing Method Channel
-        // ==========================================
+        // 2. APK ICON
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APK_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "getApkIcon") {
                 val path = call.argument<String>("path")
                 if (path != null) {
-                    val iconBytes = getApkIconBytes(path)
-                    if (iconBytes != null) {
-                        result.success(iconBytes)
-                    } else {
-                        // Pass null back so Flutter knows it safely failed and uses the fallback icon
-                        result.success(null) 
-                    }
+                    result.success(getApkIconBytes(path))
                 } else {
                     result.error("INVALID_ARGUMENT", "Path cannot be null.", null)
                 }
@@ -51,62 +70,61 @@ class MainActivity: FlutterActivity() {
             }
         }
 
-        // ==========================================
-        // 3. APP SHORTCUTS: Video Library Sub-App
-        // ==========================================
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHORTCUT_CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "createVideoPlayerShortcut") {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val shortcutManager = context.getSystemService(ShortcutManager::class.java)
-                    if (shortcutManager != null && shortcutManager.isRequestPinShortcutSupported) {
-                        val intent = Intent(context, MainActivity::class.java)
-                        intent.action = Intent.ACTION_VIEW
-                        // We will read this route on app startup to jump straight to the library
-                        intent.putExtra("route", "/video_library") 
-                        
-                        val pinShortcutInfo = ShortcutInfo.Builder(context, "video_player_shortcut")
-                            .setShortLabel("Video Player")
-                            .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher)) // Uses your existing app icon
-                            .setIntent(intent)
-                            .build()
-                        shortcutManager.requestPinShortcut(pinShortcutInfo, null)
-                        result.success(true)
-                    } else { 
-                        result.success(false) 
-                    }
-                } else { 
-                    result.success(false) 
+        // 3. SHORTCUT CONTROLLER
+        flutterChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "createVideoPlayerShortcut" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val shortcutManager = context.getSystemService(ShortcutManager::class.java)
+                        if (shortcutManager != null && shortcutManager.isRequestPinShortcutSupported) {
+                            val shortcutIntent = Intent(context, MainActivity::class.java).apply {
+                                action = Intent.ACTION_VIEW
+                                putExtra("route", "/video_library")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            }
+                            val pinShortcutInfo = ShortcutInfo.Builder(context, "video_library_pinned")
+                                .setShortLabel("Video Player")
+                                .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))
+                                .setIntent(shortcutIntent)
+                                .build()
+                            shortcutManager.requestPinShortcut(pinShortcutInfo, null)
+                            result.success(true)
+                        } else { result.success(false) }
+                    } else { result.success(false) }
                 }
-            } else {
-                result.notImplemented()
+                "getInitialRoute" -> {
+                    // Send the intent route that launched the app back to Flutter
+                    result.success(intent?.getStringExtra("route"))
+                }
+                else -> result.notImplemented()
             }
         }
     }
 
-    // Safely extracts the APK icon using your previous null-safety fixes
+    // Fires if the app is already running in the background and a shortcut is clicked
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        this.intent = intent 
+        val route = intent.getStringExtra("route")
+        if (route != null) {
+            flutterChannel?.invokeMethod("onRouteChanged", route)
+        }
+    }
+
     private fun getApkIconBytes(apkPath: String): ByteArray? {
         return try {
             val pm: PackageManager = context.packageManager
             val packageInfo = pm.getPackageArchiveInfo(apkPath, 0)
-            
-            // Safely extract applicationInfo
             val appInfo = packageInfo?.applicationInfo
-            
-            // Using '?.' to satisfy Kotlin's strict null safety
             appInfo?.sourceDir = apkPath
             appInfo?.publicSourceDir = apkPath
             
             val icon = appInfo?.loadIcon(pm)
-            
             if (icon != null) {
                 val bitmap = if (icon is BitmapDrawable) {
                     icon.bitmap
                 } else {
-                    val bit = Bitmap.createBitmap(
-                        icon.intrinsicWidth.coerceAtLeast(1), 
-                        icon.intrinsicHeight.coerceAtLeast(1), 
-                        Bitmap.Config.ARGB_8888
-                    )
+                    val bit = Bitmap.createBitmap(icon.intrinsicWidth.coerceAtLeast(1), icon.intrinsicHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
                     val canvas = Canvas(bit)
                     icon.setBounds(0, 0, canvas.width, canvas.height)
                     icon.draw(canvas)
@@ -115,11 +133,7 @@ class MainActivity: FlutterActivity() {
                 val stream = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
                 stream.toByteArray()
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            null
-        }
+            } else { null }
+        } catch (e: Exception) { null }
     }
 }
