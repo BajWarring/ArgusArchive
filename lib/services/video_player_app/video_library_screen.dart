@@ -7,7 +7,7 @@ import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/search_providers.dart';
 import '../../presentation/debug_ui/file_thumbnail_debug.dart';
 import '../../presentation/debug_ui/providers.dart';
-import '../file_handlers/video_handler.dart';
+import '../../features/file_handlers/video_handler.dart';
 
 class VideoLibraryScreen extends ConsumerWidget {
   const VideoLibraryScreen({super.key});
