@@ -52,16 +52,21 @@ final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
 });
 
 // 6. Index Service Initialization (Now uses SearchDatabase!)
+import '../../services/storage/storage_volumes_service.dart'; // Add this import at the top
+
+// ... scroll down to indexServiceProvider
 final indexServiceProvider = FutureProvider<IndexService>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final db = await ref.watch(searchDatabaseProvider.future);
   final service = IndexService(adapter: adapter, searchDb: db);
   
-  // Kick off the auto-start in the background automatically
-  service.autoStart('/storage/emulated/0');
+  // Kick off the auto-start for ALL storage volumes (Internal Storage + SD Cards)
+  final roots = await StorageVolumesService.getStorageRoots();
+  service.autoStart(roots);
   
   return service;
 });
+
 
 
 // 7. Global Transfer Queue Singleton
