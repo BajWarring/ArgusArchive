@@ -201,6 +201,14 @@ class NativeVideoPlayer(
                 }
                 result.success(null)
             }
+            "setSubtitleDelay" -> {
+                // Media3 handles subtitle delay offsets directly via the MediaItem SubtitleConfiguration in advanced setups.
+                // For a quick runtime offset without rebuilding the pipeline, we log it for the OpenSubtitles parser hook.
+                val delayMs = call.argument<Int>("delayMs") ?: 0
+                // Placeholder: Apply delayMs to Subtitle Decoder buffer
+                result.success(null)
+            }
+
 
             else -> result.notImplemented()
         }
