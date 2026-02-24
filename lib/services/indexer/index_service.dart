@@ -2,52 +2,52 @@ import 'dart:async';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
-import '../../data/db/search_database.dart'; // Updated Import
+import '../../data/db/search_database.dart';
 
 class IndexService {
   final StorageAdapter adapter;
-  final SearchDatabase searchDb; // Updated class
+  final SearchDatabase searchDb; 
   
-  StreamSubscription<StorageEvent>? _watchSubscription;
+  final List<StreamSubscription<StorageEvent>> _watchSubscriptions = [];
   bool _isIndexing = false;
 
   IndexService({required this.adapter, required this.searchDb});
 
-  Future<void> start({required String rootPath, bool rebuild = false}) async {
+  Future<void> start({required List<String> rootPaths, bool rebuild = false}) async {
     await searchDb.init();
     if (rebuild) {
       await searchDb.clearIndex();
-      _buildIndexBackground(rootPath);
+      _buildIndexBackground(rootPaths);
     }
 
-    _listenToChanges(rootPath);
+    for (var path in rootPaths) {
+      _listenToChanges(path);
+    }
   }
 
-  Future<void> autoStart(String rootPath) async {
+  Future<void> autoStart(List<String> rootPaths) async {
     await searchDb.init();
     
-    // 1. If it's the first time running (DB is empty), build the index silently.
     final empty = await searchDb.isEmpty();
     if (empty) {
-      _buildIndexBackground(rootPath);
+      _buildIndexBackground(rootPaths);
     }
     
-    // 2. Always start listening to live file changes (copy, move, delete)
-    _listenToChanges(rootPath);
+    for (var path in rootPaths) {
+      _listenToChanges(path);
+    }
   }
 
-
-  Future<void> _buildIndexBackground(String rootPath) async {
+  Future<void> _buildIndexBackground(List<String> rootPaths) async {
     if (_isIndexing) return;
     _isIndexing = true;
     try {
-      final List<String> dirsToScan = [rootPath];
+      final List<String> dirsToScan = List.from(rootPaths);
       while (dirsToScan.isNotEmpty) {
         final currentDir = dirsToScan.removeAt(0);
         try {
           final entries = await adapter.list(currentDir);
           
-          // Use the high-performance batch insert
           await searchDb.insertBatch(entries); 
           
           for (final entry in entries) {
@@ -67,8 +67,7 @@ class IndexService {
   }
 
   void _listenToChanges(String rootPath) {
-    _watchSubscription?.cancel();
-    _watchSubscription = adapter.watch(rootPath).listen((event) async {
+    final sub = adapter.watch(rootPath).listen((event) async {
       try {
         if (event.eventType == 'deleted') {
           await searchDb.delete(event.path);
@@ -83,23 +82,23 @@ class IndexService {
             modifiedAt: meta.modifiedAt,
           );
           
-          // Use batch insert for single files too for consistency
           await searchDb.insertBatch([entry]);
         }
-      } catch (_) {
-      }
+      } catch (_) {}
     });
+    _watchSubscriptions.add(sub);
   }
 
   void dispose() {
-    _watchSubscription?.cancel();
+    for (var sub in _watchSubscriptions) {
+      sub.cancel();
+    }
   }
 
   FileType _guessTypeFromPath(String path) {
     final lowerPath = path.toLowerCase();
-    // Upgraded guesser mapping to match our new thumbnails!
     if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.png') || lowerPath.endsWith('.gif') || lowerPath.endsWith('.webp') || lowerPath.endsWith('.bmp') || lowerPath.endsWith('.svg')) return FileType.image;
-    if (lowerPath.endsWith('.mp4')) return FileType.video;
+    if (lowerPath.endsWith('.mp4') || lowerPath.endsWith('.mkv') || lowerPath.endsWith('.webm') || lowerPath.endsWith('.avi') || lowerPath.endsWith('.mov') || lowerPath.endsWith('.ts')) return FileType.video;
     if (lowerPath.endsWith('.pdf')) return FileType.document;
     if (lowerPath.endsWith('.zip')) return FileType.archive;
     return FileType.unknown;
