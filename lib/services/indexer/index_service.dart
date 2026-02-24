@@ -23,6 +23,20 @@ class IndexService {
     _listenToChanges(rootPath);
   }
 
+  Future<void> autoStart(String rootPath) async {
+    await searchDb.init();
+    
+    // 1. If it's the first time running (DB is empty), build the index silently.
+    final empty = await searchDb.isEmpty();
+    if (empty) {
+      _buildIndexBackground(rootPath);
+    }
+    
+    // 2. Always start listening to live file changes (copy, move, delete)
+    _listenToChanges(rootPath);
+  }
+
+
   Future<void> _buildIndexBackground(String rootPath) async {
     if (_isIndexing) return;
     _isIndexing = true;
