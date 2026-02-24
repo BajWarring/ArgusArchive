@@ -7,6 +7,7 @@ import '../../features/file_handlers/image_handler.dart';
 import '../../features/file_handlers/text_handler.dart';
 import '../../features/file_handlers/svg_handler.dart';
 import '../../features/file_handlers/pdf_handler.dart';
+import '../../features/file_handlers/video_handler.dart';
 import '../../services/indexer/index_service.dart';
 import '../../services/transfer/transfer_queue.dart';
 import '../../services/transfer/transfer_task.dart';
