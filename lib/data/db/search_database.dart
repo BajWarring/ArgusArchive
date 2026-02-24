@@ -12,14 +12,13 @@ class SearchDatabase {
     if (_db != null) return;
 
     final Directory docDir = await getApplicationDocumentsDirectory();
-    // Renamed the database file to start fresh and avoid conflicts with the broken FTS5 DB
-    final String path = p.join(docDir.path, 'argus_fts4_search.db'); 
+    final String path = p.join(docDir.path, 'argus_fts4_search_v2.db'); 
 
     _db = await openDatabase(
       path,
       version: 1,
       onCreate: (db, version) async {
-        // High-compatibility FTS4 fallback
+        // Bulletproof FTS4: Stripped of advanced modifiers for maximum device compatibility
         await db.execute('''
           CREATE VIRTUAL TABLE file_index USING fts4(
             id, 
@@ -28,10 +27,6 @@ class SearchDatabase {
             type, 
             size, 
             modifiedAt,
-            notindexed=id,
-            notindexed=type,
-            notindexed=size,
-            notindexed=modifiedAt,
             tokenize=unicode61
           );
         ''');
@@ -65,15 +60,6 @@ class SearchDatabase {
     await db.rawDelete('DELETE FROM file_index WHERE id = ? OR path LIKE ?', [id, '$id/%']);
   }
 
-  Future<bool> isEmpty() async {
-    final db = _db;
-    if (db == null) return true;
-    final result = await db.rawQuery('SELECT COUNT(*) as count FROM file_index');
-    final count = Sqflite.firstIntValue(result);
-    return count == null || count == 0;
-  }
-
-
   Future<List<FileEntry>> search({
     required String query, 
     FileType? filterType,
@@ -83,10 +69,29 @@ class SearchDatabase {
     final db = _db;
     if (db == null) throw Exception('Database not initialized');
 
+    // Make the query strictly alphanumeric to prevent SQLite syntax crashes
     final cleanQuery = query.trim().replaceAll(RegExp(r'[^\w\s]'), '');
-    if (cleanQuery.isEmpty) return [];
 
-    // FTS4 Prefix matching syntax (space separated instead of AND)
+    // FIX: If the search bar is empty, but we requested a specific file type (like Videos),
+    // return them sorted by newest! This powers the sub-app libraries.
+    if (cleanQuery.isEmpty) {
+      if (filterType == null) return []; 
+      
+      String sql = 'SELECT * FROM file_index WHERE type = ? ORDER BY modifiedAt DESC LIMIT 200';
+      final List<Map<String, dynamic>> maps = await db.rawQuery(sql, [filterType.index]);
+      
+      return maps.map((map) {
+        return FileEntry(
+          id: map['id'] as String,
+          path: map['path'] as String,
+          type: FileType.values[int.parse(map['type'].toString())],
+          size: int.parse(map['size'].toString()),
+          modifiedAt: DateTime.fromMillisecondsSinceEpoch(int.parse(map['modifiedAt'].toString())),
+        );
+      }).toList();
+    }
+
+    // Format for FTS4 wildcard matching (e.g. searching "Aadh" matches "Aadhaar")
     final ftsQuery = cleanQuery.split(' ').map((word) => '$word*').join(' ');
 
     String sql = '''
@@ -100,12 +105,8 @@ class SearchDatabase {
       sql += ' AND type = ?';
       args.add(filterType.index);
     }
-    if (minSize != null) {
-      sql += ' AND size >= ?';
-      args.add(minSize);
-    }
 
-    sql += ' LIMIT 100';
+    sql += ' LIMIT 150';
 
     final List<Map<String, dynamic>> maps = await db.rawQuery(sql, args);
 
@@ -113,14 +114,22 @@ class SearchDatabase {
       return FileEntry(
         id: map['id'] as String,
         path: map['path'] as String,
-        type: FileType.values[map['type'] as int],
-        size: map['size'] as int,
-        modifiedAt: DateTime.fromMillisecondsSinceEpoch(map['modifiedAt'] as int),
+        type: FileType.values[int.parse(map['type'].toString())],
+        size: int.parse(map['size'].toString()),
+        modifiedAt: DateTime.fromMillisecondsSinceEpoch(int.parse(map['modifiedAt'].toString())),
       );
     }).toList();
   }
 
   Future<void> clearIndex() async {
     if (_db != null) await _db!.delete('file_index');
+  }
+
+  Future<bool> isEmpty() async {
+    final db = _db;
+    if (db == null) return true;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM file_index');
+    final count = Sqflite.firstIntValue(result);
+    return count == null || count == 0;
   }
 }
