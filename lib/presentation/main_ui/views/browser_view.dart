@@ -4,8 +4,8 @@ import 'package:path/path.dart' as p;
 import '../../ui_theme.dart';
 import '../../../core/enums/file_type.dart';
 import '../../debug_ui/providers.dart';
-import '../widgets/main_ui_dialogs.dart'; // The new bottom sheet logic
-import '../../debug_ui/file_bottom_sheets_debug.dart'; // For archive taps
+import '../widgets/main_ui_dialogs.dart'; 
+import '../../debug_ui/file_bottom_sheets_debug.dart'; 
 
 class BrowserView extends ConsumerWidget {
   const BrowserView({super.key});
@@ -53,17 +53,19 @@ class BrowserView extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
-                
-                // WORKING LONG PRESS -> Opens HTML styled Bottom Sheet
                 onLongPress: () {
                   if (isSelectionMode) return;
                   MainUIDialogs.showActionBottomSheet(context, ref, file, icon: icon, iconColor: iconColor);
                 },
-                
                 onTap: () async {
                   if (isSelectionMode) {
                      final set = Set<String>.from(selectedFiles);
-                     if (isSelected) set.remove(file.path); else set.add(file.path);
+                     // FIXED: Added curly braces for linter
+                     if (isSelected) {
+                       set.remove(file.path);
+                     } else {
+                       set.add(file.path);
+                     }
                      ref.read(selectedFilesProvider.notifier).state = set;
                   } else if (isFolder) {
                      ref.read(currentPathProvider.notifier).state = file.path;
@@ -71,7 +73,6 @@ class BrowserView extends ConsumerWidget {
                      final ext = p.extension(file.path).toLowerCase();
                      final isArchive = ext == '.zip' || ext == '.apk' || ext == '.rar';
                      
-                     // WORKING APK & ZIP TAPS
                      if (isArchive) {
                        FileBottomSheetsDebug.showArchiveTapMenu(context, ref, file, isApk: ext == '.apk');
                      } else {
