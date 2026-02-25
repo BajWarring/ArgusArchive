@@ -1,0 +1,56 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- White Square Background (rx="22" mapped manually for Android path compatibility) -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M 22 0 L 78 0 A 22 22 0 0 1 100 22 L 100 78 A 22 22 0 0 1 78 100 L 22 100 A 22 22 0 0 1 0 78 L 0 22 A 22 22 0 0 1 22 0 Z" />
+
+    <!-- 
+      Group to handle the exact 85% layout scaling and centering 
+      scale: 0.85 
+      translate: 7.5 on X and Y to perfectly center
+    -->
+    <group
+        android:translateX="7.5"
+        android:translateY="7.5"
+        android:scaleX="0.85"
+        android:scaleY="0.85">
+
+        <!-- Simulated SVG Drop Shadow (Shifted down by 4 units, 15% opacity black) -->
+        <group android:translateY="4">
+            <path
+                android:fillColor="#26000000"
+                android:pathData="M15 5 H 65 L 95 35 V 85 Q 95 95 85 95 H 15 Q 5 95 5 85 V 15 Q 5 5 15 5 Z" />
+        </group>
+
+        <!-- Document Base (Grapefruit Base) -->
+        <path
+            android:fillColor="#590D22"
+            android:pathData="M15 5 H 65 L 95 35 V 85 Q 95 95 85 95 H 15 Q 5 95 5 85 V 15 Q 5 5 15 5 Z" />
+        
+        <!-- Fold Shadow (40% opacity black converted to #66000000) -->
+        <path
+            android:fillColor="#66000000"
+            android:pathData="M 65 25 Q 65 40 80 40 L 95 35 Z" />
+        
+        <!-- Folded Corner (Grapefruit Fold) -->
+        <path
+            android:fillColor="#FF4D6D"
+            android:pathData="M 65 5 L 65 25 Q 65 35 75 35 L 95 35 Z" />
+        
+        <!-- Outer 'A' Chevron (Grapefruit Outer A) -->
+        <path
+            android:fillColor="#C9184A"
+            android:pathData="M50 15 L15 85 H30 L50 45 L70 85 H85 Z" />
+        
+        <!-- Inner 'A' Triangle (Converted to Path) -->
+        <path
+            android:fillColor="#FFB3C6"
+            android:pathData="M 50 55 L 35 85 L 65 85 Z" />
+            
+    </group>
+</vector>
