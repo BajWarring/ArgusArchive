@@ -14,7 +14,6 @@ class VideoGridView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // REAL DATA: Fetch database provider
     final dbAsync = ref.watch(searchDatabaseProvider);
 
     return dbAsync.when(
@@ -22,7 +21,6 @@ class VideoGridView extends ConsumerWidget {
       error: (e, s) => Center(child: Text('Error loading database: $e')),
       data: (db) {
         return FutureBuilder<List<FileEntry>>(
-          // Fetch real videos from the FTS index
           future: db.search(query: '', filterType: FileType.video).then((v) {
             v.sort((a,b) => b.modifiedAt.compareTo(a.modifiedAt));
             return v;
@@ -45,7 +43,7 @@ class VideoGridView extends ConsumerWidget {
             }
 
             return GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Padding for bottom nav
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 16,
@@ -59,10 +57,11 @@ class VideoGridView extends ConsumerWidget {
                 return InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () async {
-                     // REAL DATA: Launch Native Video Player!
-                     final handlers = ref.read(fileHandlerRegistryProvider);
+                     final registry = ref.read(fileHandlerRegistryProvider);
                      final adapter = ref.read(storageAdapterProvider);
-                     for (var h in handlers) {
+                     
+                     // FIXED: Iterating over registry.handlers
+                     for (var h in registry.handlers) {
                        if (h.canHandle(video)) { 
                          h.open(context, video, adapter); 
                          break; 
@@ -84,7 +83,6 @@ class VideoGridView extends ConsumerWidget {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              // REAL DATA: Native Kotlin Thumbnail Bridge
                               FutureBuilder<Uint8List?>(
                                 future: VideoThumbnailService.getThumbnail(video.path),
                                 builder: (ctx, tSnap) {
