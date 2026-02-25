@@ -4,16 +4,15 @@ import 'package:path/path.dart' as p;
 import '../../ui_theme.dart';
 import '../../../core/enums/file_type.dart';
 import '../../debug_ui/providers.dart';
-import '../../debug_ui/file_action_handler_debug.dart'; // Needed for 3-dot tap
+import '../widgets/main_ui_dialogs.dart'; // The new bottom sheet logic
+import '../../debug_ui/file_bottom_sheets_debug.dart'; // For archive taps
 
 class BrowserView extends ConsumerWidget {
   const BrowserView({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 1. Get real files
     final asyncFiles = ref.watch(directoryContentsProvider);
-    // 2. Get selection state
     final selectedFiles = ref.watch(selectedFilesProvider);
     final isSelectionMode = selectedFiles.isNotEmpty;
 
@@ -42,36 +41,25 @@ class BrowserView extends ConsumerWidget {
             final isFolder = file.isDirectory;
             final isSelected = selectedFiles.contains(file.path);
             
-            IconData icon;
-            Color iconColor;
-            Color bgColor;
-            if (isFolder) { 
-              icon = Icons.folder; iconColor = ArgusColors.primary; bgColor = ArgusColors.primary.withValues(alpha: 0.1); 
-            } else if (file.type == FileType.video) { 
-              icon = Icons.movie; iconColor = Colors.purple; bgColor = Colors.purple.withValues(alpha: 0.1); 
-            } else if (file.type == FileType.image) { 
-              icon = Icons.image; iconColor = Colors.blue; bgColor = Colors.blue.withValues(alpha: 0.1); 
-            } else if (file.type == FileType.archive) { 
-              icon = Icons.folder_zip; iconColor = Colors.orange; bgColor = Colors.orange.withValues(alpha: 0.1); 
-            } else if (file.path.toLowerCase().endsWith('.apk')) { 
-              icon = Icons.android; iconColor = Colors.green; bgColor = Colors.green.withValues(alpha: 0.1); 
-            } else { 
-              icon = Icons.insert_drive_file; iconColor = ArgusColors.slate500; bgColor = Colors.blueGrey.withValues(alpha: 0.1); 
-            }
+            IconData icon; Color iconColor; Color bgColor;
+            if (isFolder) { icon = Icons.folder; iconColor = ArgusColors.primary; bgColor = ArgusColors.primary.withValues(alpha: 0.1); } 
+            else if (file.type == FileType.video) { icon = Icons.movie; iconColor = Colors.purple; bgColor = Colors.purple.withValues(alpha: 0.1); } 
+            else if (file.type == FileType.image) { icon = Icons.image; iconColor = Colors.blue; bgColor = Colors.blue.withValues(alpha: 0.1); } 
+            else if (file.type == FileType.archive) { icon = Icons.folder_zip; iconColor = Colors.orange; bgColor = Colors.orange.withValues(alpha: 0.1); } 
+            else if (file.path.toLowerCase().endsWith('.apk')) { icon = Icons.android; iconColor = Colors.green; bgColor = Colors.green.withValues(alpha: 0.1); } 
+            else { icon = Icons.insert_drive_file; iconColor = ArgusColors.slate500; bgColor = Colors.blueGrey.withValues(alpha: 0.1); }
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 
-                // WORKING HOLD MENU (Selection Mode)
+                // WORKING LONG PRESS -> Opens HTML styled Bottom Sheet
                 onLongPress: () {
-                  final set = Set<String>.from(selectedFiles);
-                  set.add(file.path);
-                  ref.read(selectedFilesProvider.notifier).state = set;
+                  if (isSelectionMode) return;
+                  MainUIDialogs.showActionBottomSheet(context, ref, file, icon: icon, iconColor: iconColor);
                 },
                 
-                // WORKING TAP (Navigate, Select, or Open)
                 onTap: () async {
                   if (isSelectionMode) {
                      final set = Set<String>.from(selectedFiles);
@@ -80,13 +68,20 @@ class BrowserView extends ConsumerWidget {
                   } else if (isFolder) {
                      ref.read(currentPathProvider.notifier).state = file.path;
                   } else {
-                     final registry = ref.read(fileHandlerRegistryProvider);
-                     final adapter = ref.read(storageAdapterProvider);
-                     final handler = registry.handlerFor(file);
-                     if (handler != null) {
-                       await handler.open(context, file, adapter);
-                     } else if (context.mounted) {
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No app found to open this file.')));
+                     final ext = p.extension(file.path).toLowerCase();
+                     final isArchive = ext == '.zip' || ext == '.apk' || ext == '.rar';
+                     
+                     // WORKING APK & ZIP TAPS
+                     if (isArchive) {
+                       FileBottomSheetsDebug.showArchiveTapMenu(context, ref, file, isApk: ext == '.apk');
+                     } else {
+                       final registry = ref.read(fileHandlerRegistryProvider);
+                       final handler = registry.handlerFor(file);
+                       if (handler != null) {
+                         await handler.open(context, file, ref.read(storageAdapterProvider));
+                       } else if (context.mounted) {
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No app found to open this file.')));
+                       }
                      }
                   }
                 },
@@ -100,11 +95,9 @@ class BrowserView extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      // HTML EXACT ICON STYLING
                       if (isSelectionMode)
                         Container(
-                          width: 40, height: 40,
-                          alignment: Alignment.center,
+                          width: 40, height: 40, alignment: Alignment.center,
                           child: Container(
                             width: 24, height: 24,
                             decoration: BoxDecoration(
@@ -127,24 +120,14 @@ class BrowserView extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(p.basename(file.path), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            Text(
-                              isFolder ? 'Folder' : '${(file.size / 1024 / 1024).toStringAsFixed(2)} MB • ${file.modifiedAt.day}/${file.modifiedAt.month}/${file.modifiedAt.year}', 
-                              style: const TextStyle(fontSize: 12, color: ArgusColors.slate500)
-                            ),
+                            Text(isFolder ? 'Folder' : '${(file.size / 1024 / 1024).toStringAsFixed(2)} MB • ${file.modifiedAt.day}/${file.modifiedAt.month}', style: const TextStyle(fontSize: 12, color: ArgusColors.slate500)),
                           ],
                         ),
                       ),
                       if (!isSelectionMode)
-                        PopupMenuButton<String>(
+                        IconButton(
                           icon: const Icon(Icons.more_vert, color: ArgusColors.slate500),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          onSelected: (action) => FileActionHandlerDebug.handleBulkActions(context, ref, action, [file.path]),
-                          itemBuilder: (ctx) => [
-                            const PopupMenuItem(value: 'copy', child: Row(children: [Icon(Icons.copy), SizedBox(width: 12), Text('Copy')])),
-                            const PopupMenuItem(value: 'cut', child: Row(children: [Icon(Icons.cut), SizedBox(width: 12), Text('Cut')])),
-                            if (!isFolder) const PopupMenuItem(value: 'compress', child: Row(children: [Icon(Icons.folder_zip), SizedBox(width: 12), Text('Compress')])),
-                            const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 12), Text('Delete', style: TextStyle(color: Colors.red))])),
-                          ],
+                          onPressed: () => MainUIDialogs.showActionBottomSheet(context, ref, file, icon: icon, iconColor: iconColor),
                         ),
                     ],
                   ),
