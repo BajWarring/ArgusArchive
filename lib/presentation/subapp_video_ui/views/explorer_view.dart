@@ -15,13 +15,13 @@ class VideoExplorerView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final asyncFiles = ref.watch(directoryContentsProvider(currentPath));
+    // FIXED: Removed (currentPath) function invocation
+    final asyncFiles = ref.watch(directoryContentsProvider);
 
     return asyncFiles.when(
       loading: () => const Center(child: CircularProgressIndicator(color: ArgusColors.primary)),
       error: (err, stack) => Center(child: Text('Error: $err')),
       data: (allFiles) {
-        // REAL DATA: Filter to ONLY show Folders and Videos
         final files = allFiles.where((f) => f.isDirectory || f.type == FileType.video).toList();
 
         if (files.isEmpty) {
@@ -50,10 +50,11 @@ class VideoExplorerView extends ConsumerWidget {
                 if (isFolder) {
                   onFolderEnter(file.path);
                 } else {
-                   // Open Video
-                   final handlers = ref.read(fileHandlerRegistryProvider);
+                   final registry = ref.read(fileHandlerRegistryProvider);
                    final adapter = ref.read(storageAdapterProvider);
-                   for (var h in handlers) {
+                   
+                   // FIXED: Iterating over registry.handlers
+                   for (var h in registry.handlers) {
                      if (h.canHandle(file)) { h.open(context, file, adapter); break; }
                    }
                 }
