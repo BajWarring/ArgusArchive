@@ -34,7 +34,6 @@ class _SearchViewState extends ConsumerState<SearchView> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Fake search bar to capture input since the real one is in the header
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: TextField(
@@ -129,9 +128,11 @@ class _SearchViewState extends ConsumerState<SearchView> {
                   subtitle: Text(file.path, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.grey)),
                   onTap: () async {
                     if (!file.isDirectory) {
-                       final handlers = ref.read(fileHandlerRegistryProvider);
+                       final registry = ref.read(fileHandlerRegistryProvider);
                        final adapter = ref.read(storageAdapterProvider);
-                       for (var h in handlers) {
+                       
+                       // FIXED: Iterating over registry.handlers
+                       for (var h in registry.handlers) {
                          if (h.canHandle(file)) { h.open(context, file, adapter); break; }
                        }
                     }
