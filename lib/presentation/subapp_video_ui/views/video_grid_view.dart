@@ -60,13 +60,9 @@ class VideoGridView extends ConsumerWidget {
                      final registry = ref.read(fileHandlerRegistryProvider);
                      final adapter = ref.read(storageAdapterProvider);
                      
-                     // FIXED: Iterating over registry.handlers
-                     for (var h in registry.handlers) {
-                       if (h.canHandle(video)) { 
-                         h.open(context, video, adapter); 
-                         break; 
-                       }
-                     }
+                     // FIXED: Uses handlerFor()
+                     final handler = registry.handlerFor(video);
+                     if (handler != null) handler.open(context, video, adapter);
                   },
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
