@@ -13,7 +13,6 @@ class BrowserView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // FIXED: Removed (currentPath) since directoryContentsProvider is not a Family provider
     final asyncFiles = ref.watch(directoryContentsProvider);
 
     return asyncFiles.when(
@@ -57,17 +56,13 @@ class BrowserView extends ConsumerWidget {
                 } else {
                    final registry = ref.read(fileHandlerRegistryProvider);
                    final adapter = ref.read(storageAdapterProvider);
-                   bool handled = false;
                    
-                   // FIXED: Iterating over registry.handlers
-                   for (var handler in registry.handlers) {
-                     if (handler.canHandle(file)) {
-                       await handler.open(context, file, adapter);
-                       handled = true;
-                       break;
-                     }
-                   }
-                   if (!handled && context.mounted) {
+                   // FIXED: Uses handlerFor() instead of trying to loop a private list
+                   final handler = registry.handlerFor(file);
+                   
+                   if (handler != null) {
+                     await handler.open(context, file, adapter);
+                   } else if (context.mounted) {
                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No app found to open this file.')));
                    }
                 }
