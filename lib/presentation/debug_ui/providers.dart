@@ -11,23 +11,19 @@ import '../../features/file_handlers/video_handler.dart';
 import '../../services/indexer/index_service.dart';
 import '../../services/transfer/transfer_queue.dart';
 import '../../services/transfer/transfer_task.dart';
-import 'search_providers.dart'; // To access searchDatabaseProvider
-import '../../services/storage/storage_volumes_service.dart'; // Add this import at the top
+import 'search_providers.dart'; 
+import '../../services/storage/storage_volumes_service.dart';
 
-// 1. Make the adapter a StateProvider so we can swap it to a ZIP adapter at runtime
 final storageAdapterProvider = StateProvider<StorageAdapter>((ref) {
   return LocalStorageAdapter();
 });
 
-// 2. Track the "real" parent path so we know where to go back to when exiting a ZIP
 final realParentPathProvider = StateProvider<String?>((ref) => null);
 
-// 3. Current path inside whatever adapter is active
 final currentPathProvider = StateProvider<String>((ref) {
-  return '/storage/emulated/0'; // Internal Storage/Device Storage
+  return '/storage/emulated/0'; 
 });
 
-// 4. Asynchronously loads the directory contents
 final directoryContentsProvider = FutureProvider.autoDispose<List<FileEntry>>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final path = ref.watch(currentPathProvider);
@@ -39,7 +35,6 @@ final directoryContentsProvider = FutureProvider.autoDispose<List<FileEntry>>((r
   }
 });
 
-// 5. Global registry for handling different file types when tapped
 final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
   final registry = FileHandlerRegistry();
   
@@ -52,56 +47,43 @@ final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
   return registry;
 });
 
-// 6. Index Service Initialization (Now uses SearchDatabase!)
-
 final indexServiceProvider = FutureProvider<IndexService>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final db = await ref.watch(searchDatabaseProvider.future);
   final service = IndexService(adapter: adapter, searchDb: db);
   
-  // Kick off the auto-start for ALL storage volumes (Internal Storage + SD Cards)
   final roots = await StorageVolumesService.getStorageRoots();
   service.autoStart(roots);
   
   return service;
 });
 
-
-
-// 7. Global Transfer Queue Singleton
 final transferQueueProvider = Provider<TransferQueue>((ref) {
   final queue = TransferQueue(maxConcurrent: 2);
-  
-  ref.onDispose(() {
-    queue.dispose();
-  });
-  
+  ref.onDispose(() { queue.dispose(); });
   return queue;
 });
 
-// 8. Live stream of queue tasks for the UI
 final queueTasksStreamProvider = StreamProvider<List<TransferTask>>((ref) {
   final queue = ref.watch(transferQueueProvider);
   return queue.queueStream;
 });
-
-// ==========================================
-// FILE OPERATIONS STATE
-// ==========================================
 
 enum ClipboardAction { copy, cut, extract, none }
 
 class ClipboardState {
   final List<String> paths;
   final ClipboardAction action;
-
   ClipboardState({this.paths = const [], this.action = ClipboardAction.none});
 }
 
-// 9. Holds the files the user currently has selected to move/copy.
 final clipboardProvider = StateProvider<ClipboardState>((ref) {
   return ClipboardState();
 });
 
-// 10. Tracks which files the user has check-marked in the current folder
 final selectedFilesProvider = StateProvider<Set<String>>((ref) => {});
+
+// ==========================================
+// NEW: Global UI Mode Toggle (Safely placed here!)
+// ==========================================
+final useDebugUiProvider = StateProvider<bool>((ref) => false);
