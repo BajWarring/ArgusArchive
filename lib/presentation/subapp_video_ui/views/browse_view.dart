@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../ui_theme.dart';
 
 class BrowseView extends StatelessWidget {
-  final VoidCallback onOpenExplorer;
+  final Function(String) onOpenExplorer;
 
   const BrowseView({super.key, required this.onOpenExplorer});
 
@@ -23,10 +23,7 @@ class BrowseView extends StatelessWidget {
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2),
-      ),
+      child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
     );
   }
 
@@ -37,36 +34,40 @@ class BrowseView extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          _buildFavCard('Camera', '142 videos', Icons.photo_camera, Colors.pink),
-          _buildFavCard('Downloads', '28 videos', Icons.download, Colors.blue),
+          // Visual stub until Favorites DB table exists
+          _buildFavCard('Camera', '142 videos', Icons.photo_camera, Colors.pink, () => onOpenExplorer('/storage/emulated/0/DCIM/Camera')),
+          _buildFavCard('Downloads', '28 videos', Icons.download, Colors.blue, () => onOpenExplorer('/storage/emulated/0/Download')),
         ],
       ),
     );
   }
 
-  Widget _buildFavCard(String title, String subtitle, IconData icon, Color color) {
-    return Container(
-      width: 130,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          CircleAvatar(backgroundColor: color.withValues(alpha: 0.1), child: Icon(icon, color: color)),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            ],
-          )
-        ],
+  Widget _buildFavCard(String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 130,
+        margin: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            CircleAvatar(backgroundColor: color.withValues(alpha: 0.1), child: Icon(icon, color: color)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              ],
+            )
+          ],
+        ),
       ),
     );
   }
@@ -76,17 +77,19 @@ class BrowseView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
-          _buildStorageCard(context, 'Internal Storage', '10 GB used of 64 GB', Icons.smartphone, 0.15),
+          _buildStorageCard(context, 'Internal Storage', 'Local Device', Icons.smartphone, 0.15, () => onOpenExplorer('/storage/emulated/0')),
           const SizedBox(height: 12),
-          _buildStorageCard(context, 'SD Card', '42 GB used of 64 GB', Icons.sd_card, 0.65),
+          _buildStorageCard(context, 'SD Card', 'External Media', Icons.sd_card, 0.65, () {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SD Card path mapping required.')));
+          }),
         ],
       ),
     );
   }
 
-  Widget _buildStorageCard(BuildContext context, String title, String subtitle, IconData icon, double progress) {
+  Widget _buildStorageCard(BuildContext context, String title, String subtitle, IconData icon, double progress, VoidCallback onTap) {
     return GestureDetector(
-      onTap: onOpenExplorer,
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
