@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui_theme.dart';
+import '../../debug_ui/providers.dart';
 
-class HomeView extends StatelessWidget {
-  final Function(String) onOpenStorage;
+class HomeView extends ConsumerWidget {
+  final VoidCallback onOpenStorage;
   
   const HomeView({super.key, required this.onOpenStorage});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
         _buildSectionHeader('PINNED FOLDERS'),
-        _buildPinnedFolders(),
+        _buildPinnedFolders(ref),
         const SizedBox(height: 16),
         _buildSectionHeader('STORAGE DEVICES'),
-        _buildStorageDevices(context),
-        const SizedBox(height: 16),
-        _buildSectionHeader('RECENT ACTIVITY'),
-        _buildRecentActivity(context),
+        _buildStorageDevices(context, ref),
       ],
     );
   }
@@ -26,19 +25,21 @@ class HomeView extends StatelessWidget {
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
+      child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: ArgusColors.slate500, letterSpacing: 1.2)),
     );
   }
 
-  Widget _buildPinnedFolders() {
+  Widget _buildPinnedFolders(WidgetRef ref) {
     return SizedBox(
       height: 100,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          _buildPinnedCard('Downloads', '12 items', () => onOpenStorage('/storage/emulated/0/Download')),
-          _buildPinnedCard('DCIM', '450 items', () => onOpenStorage('/storage/emulated/0/DCIM')),
+          _buildPinnedCard('Downloads', '12 items', () {
+             ref.read(currentPathProvider.notifier).state = '/storage/emulated/0/Download';
+             onOpenStorage();
+          }),
           _buildAddPinCard(),
         ],
       ),
@@ -53,9 +54,10 @@ class HomeView extends StatelessWidget {
         margin: const EdgeInsets.only(right: 12),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
+          color: Colors.white, // Matches light HTML
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -66,7 +68,7 @@ class HomeView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                Text(subtitle, style: const TextStyle(fontSize: 10, color: ArgusColors.slate500)),
               ],
             )
           ],
@@ -85,31 +87,34 @@ class HomeView extends StatelessWidget {
       child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.add_circle, color: Colors.grey, size: 28),
+          Icon(Icons.add_circle, color: ArgusColors.slate500, size: 28),
           SizedBox(height: 4),
-          Text('Pin Folder', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+          Text('Pin Folder', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: ArgusColors.slate500)),
         ],
       ),
     );
   }
 
-  Widget _buildStorageDevices(BuildContext context) {
+  Widget _buildStorageDevices(BuildContext context, WidgetRef ref) {
     return SizedBox(
       height: 140,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          _buildStorageCard(context, 'Internal Storage', 'Local Device', Icons.smartphone, () => onOpenStorage('/storage/emulated/0')),
-          _buildStorageCard(context, 'SD Card', 'External Media', Icons.sd_card, () {
-             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SD Card access requires specific path mapping.')));
+          _buildStorageCard(context, 'Internal Storage', 'Local Device', Icons.smartphone, true, () {
+             ref.read(currentPathProvider.notifier).state = '/storage/emulated/0';
+             onOpenStorage();
+          }),
+          _buildStorageCard(context, 'SD Card', 'External Media', Icons.sd_card, false, () {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SD Card access via debug_ui paths.')));
           }),
         ],
       ),
     );
   }
 
-  Widget _buildStorageCard(BuildContext context, String title, String subtitle, IconData icon, VoidCallback onTap) {
+  Widget _buildStorageCard(BuildContext context, String title, String subtitle, IconData icon, bool isPrimary, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -117,9 +122,10 @@ class HomeView extends StatelessWidget {
         margin: const EdgeInsets.only(right: 16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,7 +134,14 @@ class HomeView extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                CircleAvatar(backgroundColor: ArgusColors.primary.withValues(alpha: 0.1), child: Icon(icon, color: ArgusColors.primary)),
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: isPrimary ? ArgusColors.primary.withValues(alpha: 0.1) : Colors.blueGrey.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: isPrimary ? ArgusColors.primary : Colors.blueGrey),
+                ),
                 const Icon(Icons.chevron_right, color: Colors.grey),
               ],
             ),
@@ -136,51 +149,11 @@ class HomeView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                const SizedBox(height: 8),
+                Text(subtitle, style: const TextStyle(fontSize: 11, color: ArgusColors.slate500)),
               ],
             )
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildRecentActivity(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: [
-          _buildListTileStub('Database Loading...', 'Recent items will appear here', Icons.history, Colors.grey),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildListTileStub(String title, String subtitle, IconData icon, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(backgroundColor: color.withValues(alpha: 0.1), child: Icon(icon, color: color)),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              ],
-            ),
-          ),
-          const Icon(Icons.more_vert, color: Colors.grey),
-        ],
       ),
     );
   }
