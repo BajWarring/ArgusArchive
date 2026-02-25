@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/permission_provider.dart';
-import '../../providers/ui_mode_provider.dart';
+import '../debug_ui/providers.dart'; // FIXED IMPORT PATH
 import '../debug_ui/file_browser_debug.dart';
 import '../main_ui/main_screen.dart';
 import 'permission_screen.dart';
@@ -21,10 +21,8 @@ class RootNavigator extends ConsumerWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. The Active UI (Swaps instantly without losing underlying data)
           useDebugUi ? const FileBrowserDebug() : const MainScreen(),
 
-          // 2. Global Universal UI Toggle (Floats on top of everything)
           Positioned(
             bottom: 100,
             right: 16,
