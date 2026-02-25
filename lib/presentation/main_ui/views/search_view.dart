@@ -131,10 +131,9 @@ class _SearchViewState extends ConsumerState<SearchView> {
                        final registry = ref.read(fileHandlerRegistryProvider);
                        final adapter = ref.read(storageAdapterProvider);
                        
-                       // FIXED: Iterating over registry.handlers
-                       for (var h in registry.handlers) {
-                         if (h.canHandle(file)) { h.open(context, file, adapter); break; }
-                       }
+                       // FIXED: Uses handlerFor()
+                       final handler = registry.handlerFor(file);
+                       if (handler != null) handler.open(context, file, adapter);
                     }
                   },
                 );
