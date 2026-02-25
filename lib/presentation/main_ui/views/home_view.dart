@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import '../../ui_theme.dart';
 
 class HomeView extends StatelessWidget {
-  final VoidCallback onNavigateBrowser;
+  final Function(String) onOpenStorage;
   
-  const HomeView({super.key, required this.onNavigateBrowser});
+  const HomeView({super.key, required this.onOpenStorage});
 
   @override
   Widget build(BuildContext context) {
@@ -26,10 +26,7 @@ class HomeView extends StatelessWidget {
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2),
-      ),
+      child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
     );
   }
 
@@ -40,37 +37,40 @@ class HomeView extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          _buildPinnedCard('Downloads', '12 items'),
-          _buildPinnedCard('DCIM', '450 items'),
+          _buildPinnedCard('Downloads', '12 items', () => onOpenStorage('/storage/emulated/0/Download')),
+          _buildPinnedCard('DCIM', '450 items', () => onOpenStorage('/storage/emulated/0/DCIM')),
           _buildAddPinCard(),
         ],
       ),
     );
   }
 
-  Widget _buildPinnedCard(String title, String subtitle) {
-    return Container(
-      width: 110,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Icon(Icons.folder, color: ArgusColors.primary, size: 28),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-              Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            ],
-          )
-        ],
+  Widget _buildPinnedCard(String title, String subtitle, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 110,
+        margin: const EdgeInsets.only(right: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Icon(Icons.folder, color: ArgusColors.primary, size: 28),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              ],
+            )
+          ],
+        ),
       ),
     );
   }
@@ -80,7 +80,7 @@ class HomeView extends StatelessWidget {
       width: 110,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.3), style: BorderStyle.solid, width: 2), // Dashed effect is complex, using solid for now
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.3), style: BorderStyle.solid, width: 2),
       ),
       child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -100,16 +100,18 @@ class HomeView extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
-          _buildStorageCard(context, 'Internal Storage', '10 GB used of 64 GB', Icons.smartphone, 0.15),
-          _buildStorageCard(context, 'SD Card', '42 GB used of 64 GB', Icons.sd_card, 0.65),
+          _buildStorageCard(context, 'Internal Storage', 'Local Device', Icons.smartphone, () => onOpenStorage('/storage/emulated/0')),
+          _buildStorageCard(context, 'SD Card', 'External Media', Icons.sd_card, () {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SD Card access requires specific path mapping.')));
+          }),
         ],
       ),
     );
   }
 
-  Widget _buildStorageCard(BuildContext context, String title, String subtitle, IconData icon, double progress) {
+  Widget _buildStorageCard(BuildContext context, String title, String subtitle, IconData icon, VoidCallback onTap) {
     return GestureDetector(
-      onTap: onNavigateBrowser,
+      onTap: onTap,
       child: Container(
         width: 220,
         margin: const EdgeInsets.only(right: 16),
@@ -136,12 +138,6 @@ class HomeView extends StatelessWidget {
                 Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 const SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: progress,
-                  backgroundColor: Colors.grey.withValues(alpha: 0.2),
-                  valueColor: const AlwaysStoppedAnimation<Color>(ArgusColors.primary),
-                  borderRadius: BorderRadius.circular(4),
-                )
               ],
             )
           ],
@@ -155,8 +151,7 @@ class HomeView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
-          _buildListTileStub('Argus_Release_v1.apk', '45 MB • Oct 24', Icons.android, Colors.green),
-          _buildListTileStub('Project_Assets.zip', '120 MB • Sep 10', Icons.folder_zip, Colors.amber),
+          _buildListTileStub('Database Loading...', 'Recent items will appear here', Icons.history, Colors.grey),
         ],
       ),
     );
