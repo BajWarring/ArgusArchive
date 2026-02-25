@@ -19,13 +19,25 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   MainView _currentView = MainView.home;
   bool _isSelectionMode = false;
-  final int _selectionCount = 0; // FIXED: Made final to satisfy the linter
-  
-  // Operation Bar State
+  final int _selectionCount = 0;
   bool _isCopyingState = false;
+
+  // REAL DATA INTEGRATION: Path Tracking
+  String _currentPath = '/storage/emulated/0';
+  final List<String> _pathStack = ['/storage/emulated/0'];
 
   void _navigateTo(MainView view) {
     setState(() => _currentView = view);
+  }
+
+  void _openFolder(String path) {
+    setState(() {
+      _currentPath = path;
+      if (_pathStack.isEmpty || _pathStack.last != path) {
+        _pathStack.add(path);
+      }
+      _currentView = MainView.browser;
+    });
   }
 
   void _handleHardwareBack() {
@@ -38,7 +50,15 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
     if (_currentView == MainView.browser) {
-      _navigateTo(MainView.home);
+      if (_pathStack.length > 1) {
+        setState(() {
+          _pathStack.removeLast();
+          _currentPath = _pathStack.last;
+        });
+      } else {
+        _navigateTo(MainView.home);
+      }
+      return;
     }
   }
 
@@ -48,7 +68,6 @@ class _MainScreenState extends State<MainScreen> {
 
     return PopScope(
       canPop: _currentView == MainView.home && !_isSelectionMode,
-      // FIXED: Replaced deprecated onPopInvoked with onPopInvokedWithResult
       onPopInvokedWithResult: (didPop, result) { 
         if (!didPop) _handleHardwareBack(); 
       },
@@ -93,21 +112,20 @@ class _MainScreenState extends State<MainScreen> {
             ],
           ),
         ),
-        floatingActionButton: _currentView == MainView.browser ? FloatingActionButton(
-          onPressed: () => setState(() => _isCopyingState = true),
-          backgroundColor: ArgusColors.primary,
-          child: const Icon(Icons.copy, color: Colors.white),
-        ) : null,
       ),
     );
   }
 
   Widget _buildCurrentView() {
     switch (_currentView) {
-      case MainView.home: return HomeView(onNavigateBrowser: () => _navigateTo(MainView.browser));
-      case MainView.browser: return const BrowserView();
-      case MainView.search: return const SearchView();
-      case MainView.settings: return const SettingsView();
+      case MainView.home: 
+        return HomeView(onOpenStorage: _openFolder);
+      case MainView.browser: 
+        return BrowserView(currentPath: _currentPath, onFolderEnter: _openFolder);
+      case MainView.search: 
+        return const SearchView();
+      case MainView.settings: 
+        return const SettingsView();
     }
   }
 }
