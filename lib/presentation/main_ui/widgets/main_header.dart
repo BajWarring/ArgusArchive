@@ -4,7 +4,7 @@ import 'package:path/path.dart' as p;
 import '../../ui_theme.dart';
 import '../main_screen.dart';
 import '../../debug_ui/providers.dart';
-import '../../debug_ui/file_action_handler_debug.dart'; // To process actions
+import '../../debug_ui/file_action_handler_debug.dart';
 
 class MainHeader extends ConsumerWidget {
   final MainView currentView;
@@ -47,13 +47,16 @@ class MainHeader extends ConsumerWidget {
                 IconButton(icon: const Icon(Icons.arrow_back), onPressed: onBack),
               ],
               
-              // WORKING LOCATION POPUP
               PopupMenuButton<String>(
                 offset: const Offset(0, 40),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 onSelected: (val) {
-                  if (val == 'int') ref.read(currentPathProvider.notifier).state = '/storage/emulated/0';
-                  else if (val == 'up') ref.read(currentPathProvider.notifier).state = p.dirname(currentPath);
+                  // FIXED: Added curly braces for linter
+                  if (val == 'int') {
+                    ref.read(currentPathProvider.notifier).state = '/storage/emulated/0';
+                  } else if (val == 'up') {
+                    ref.read(currentPathProvider.notifier).state = p.dirname(currentPath);
+                  }
                 },
                 itemBuilder: (ctx) => [
                   const PopupMenuItem(value: 'int', child: Row(children: [Icon(Icons.smartphone), SizedBox(width: 12), Text('Internal Storage')])),
@@ -83,14 +86,11 @@ class MainHeader extends ConsumerWidget {
             Row(
               children: [
                 IconButton(icon: const Icon(Icons.search), onPressed: onSearchTap),
-                // WORKING MORE POPUP
                 PopupMenuButton<String>(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   icon: const Icon(Icons.more_vert),
                   onSelected: (val) {
                     if (val == 'settings') {
-                       // Handled automatically if we pushed a route, but for this architecture we need to call navigate.
-                       // We trigger a SnackBar here just as proof of life. Settings works via bottom nav in video.
                     } else {
                        FileActionHandlerDebug.handleNormalMenu(context, ref, val, currentPath);
                     }
@@ -122,12 +122,10 @@ class MainHeader extends ConsumerWidget {
           Row(
             children: [
               IconButton(icon: const Icon(Icons.checklist, color: ArgusColors.primary), onPressed: () {
-                // Select all logic
                 final files = ref.read(directoryContentsProvider).value ?? [];
                 ref.read(selectedFilesProvider.notifier).state = files.map((e) => e.path).toSet();
               }),
               
-              // WORKING BULK ACTIONS POPUP
               PopupMenuButton<String>(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 icon: const Icon(Icons.more_vert),
