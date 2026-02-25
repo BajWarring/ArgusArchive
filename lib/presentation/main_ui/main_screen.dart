@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../ui_theme.dart';
-import '../../presentation/debug_ui/providers.dart'; // Wires to original logic
+import '../../presentation/debug_ui/providers.dart';
+import '../../presentation/debug_ui/file_action_handler_debug.dart'; // FIXED: Proper static import
 import 'views/home_view.dart';
 import 'views/browser_view.dart';
 import 'views/search_view.dart';
@@ -29,7 +30,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   void _handleHardwareBack() {
     final selectedFiles = ref.read(selectedFilesProvider);
     if (selectedFiles.isNotEmpty) {
-      ref.read(selectedFilesProvider.notifier).state = {}; // Clear selection
+      ref.read(selectedFilesProvider.notifier).state = {}; 
       return;
     }
     
@@ -52,11 +53,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // REAL DATA: Listen to selection state natively
     final selectedFiles = ref.watch(selectedFilesProvider);
     final isSelectionMode = selectedFiles.isNotEmpty;
     
-    // REAL DATA: Listen to clipboard for the Paste Bar
     final clipboard = ref.watch(clipboardProvider);
     final showOperationBar = clipboard.action != ClipboardAction.none && !isSelectionMode && _currentView == MainView.browser;
 
@@ -95,10 +94,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                     icon: clipboard.action == ClipboardAction.cut ? Icons.content_cut : Icons.content_copy,
                     onCancel: () => ref.read(clipboardProvider.notifier).state = ClipboardState(),
                     onPaste: () {
-                      // REAL DATA: Uses your existing debug_ui logic to paste!
-                      import('../../presentation/debug_ui/file_action_handler_debug.dart').then((m) {
-                         m.FileActionHandlerDebug.handleFabAction(context, ref, ref.read(currentPathProvider));
-                      });
+                      // FIXED: Uses the static import directly
+                      FileActionHandlerDebug.handleFabAction(context, ref, ref.read(currentPathProvider));
                     },
                   ),
                 )
