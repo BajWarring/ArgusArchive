@@ -13,8 +13,8 @@ class BrowserView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // REAL DATA: Fetch actual directory contents
-    final asyncFiles = ref.watch(directoryContentsProvider(currentPath));
+    // FIXED: Removed (currentPath) since directoryContentsProvider is not a Family provider
+    final asyncFiles = ref.watch(directoryContentsProvider);
 
     return asyncFiles.when(
       loading: () => const Center(child: CircularProgressIndicator(color: ArgusColors.primary)),
@@ -40,7 +40,6 @@ class BrowserView extends ConsumerWidget {
             final file = files[index];
             final isFolder = file.isDirectory;
             
-            // Dynamic Icon based on real FileType
             IconData icon;
             Color iconColor;
             if (isFolder) { icon = Icons.folder; iconColor = ArgusColors.primary; }
@@ -56,11 +55,12 @@ class BrowserView extends ConsumerWidget {
                 if (isFolder) {
                   onFolderEnter(file.path);
                 } else {
-                   // REAL DATA: Trigger your actual File Handlers!
-                   final handlers = ref.read(fileHandlerRegistryProvider);
+                   final registry = ref.read(fileHandlerRegistryProvider);
                    final adapter = ref.read(storageAdapterProvider);
                    bool handled = false;
-                   for (var handler in handlers) {
+                   
+                   // FIXED: Iterating over registry.handlers
+                   for (var handler in registry.handlers) {
                      if (handler.canHandle(file)) {
                        await handler.open(context, file, adapter);
                        handled = true;
@@ -101,7 +101,7 @@ class BrowserView extends ConsumerWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.more_vert, color: Colors.grey),
-                      onPressed: () { /* Show bottom sheet here */ }
+                      onPressed: () { }
                     ),
                   ],
                 ),
