@@ -3,10 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../ui_theme.dart';
 import '../../../core/models/file_entry.dart';
-import '../../../core/enums/file_type.dart';
 import '../../debug_ui/providers.dart';
 import '../../debug_ui/file_action_handler_debug.dart';
-import '../../debug_ui/file_bottom_sheets_debug.dart'; // For ZIP/APK extraction menu
+import '../../debug_ui/file_bottom_sheets_debug.dart'; 
 
 class MainUIDialogs {
   
@@ -36,7 +35,6 @@ class MainUIDialogs {
                 Container(width: 48, height: 4, decoration: BoxDecoration(color: isDark ? Colors.grey.shade600 : Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
                 const SizedBox(height: 24),
                 
-                // HEADER
                 Row(
                   children: [
                     Container(
@@ -54,7 +52,6 @@ class MainUIDialogs {
                         ],
                       ),
                     ),
-                    // THE SELECTION BUTTON
                     IconButton(
                       icon: const Icon(Icons.radio_button_unchecked, color: ArgusColors.slate500),
                       onPressed: () {
@@ -66,7 +63,6 @@ class MainUIDialogs {
                 ),
                 const SizedBox(height: 16),
                 
-                // ACTION GRID
                 if (ext == '.apk') ...[
                   _buildActionRow(context, 'Install APK', Icons.android, Colors.green, () {
                      final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file);
