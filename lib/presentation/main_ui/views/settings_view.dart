@@ -1,22 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui_theme.dart';
+import '../../../providers/ui_mode_provider.dart';
 
-class SettingsView extends StatelessWidget {
+class SettingsView extends ConsumerWidget {
   const SettingsView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _buildSectionHeader('DEVELOPER OPTIONS'),
+        _buildSettingsCard([
+          _buildSettingsRow('Use Legacy Debug UI', trailing: Switch(
+            value: ref.watch(useDebugUiProvider),
+            activeColor: ArgusColors.primary,
+            onChanged: (val) {
+              ref.read(useDebugUiProvider.notifier).state = val;
+            },
+          )),
+        ]),
+        const SizedBox(height: 24),
         _buildSectionHeader('APPEARANCE'),
         _buildSettingsCard([
           _buildSettingsRow('Dark Mode', trailing: Switch(
             value: Theme.of(context).brightness == Brightness.dark,
             activeColor: ArgusColors.primary,
-            onChanged: (val) {
-              // Connect to your existing theme provider here
-            },
+            onChanged: (val) {},
           )),
         ]),
         const SizedBox(height: 24),
