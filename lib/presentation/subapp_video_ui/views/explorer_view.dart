@@ -15,7 +15,6 @@ class VideoExplorerView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // FIXED: Removed (currentPath) function invocation
     final asyncFiles = ref.watch(directoryContentsProvider);
 
     return asyncFiles.when(
@@ -53,10 +52,9 @@ class VideoExplorerView extends ConsumerWidget {
                    final registry = ref.read(fileHandlerRegistryProvider);
                    final adapter = ref.read(storageAdapterProvider);
                    
-                   // FIXED: Iterating over registry.handlers
-                   for (var h in registry.handlers) {
-                     if (h.canHandle(file)) { h.open(context, file, adapter); break; }
-                   }
+                   // FIXED: Uses handlerFor()
+                   final handler = registry.handlerFor(file);
+                   if (handler != null) handler.open(context, file, adapter);
                 }
               },
               child: Container(
