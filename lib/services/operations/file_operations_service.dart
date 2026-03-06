@@ -26,7 +26,7 @@ class FileOperationsService {
     return TrashService.moveToTrash(path);
   }
 
-  // ─── UNIQUE PATH GENERATORS ───────────────────────────────────────────────
+  // ─── UNIQUE PATH GENERATORS ──────────────────────────────────────────────
   static String getRenameUniquePath(String destDir, String originalName) {
     String name = p.basenameWithoutExtension(originalName);
     String ext = p.extension(originalName);
@@ -48,7 +48,9 @@ class FileOperationsService {
     final match = regex.firstMatch(name);
     if (match != null) {
       baseName = name.substring(0, match.start);
-      if (match.group(1) != null) counter = int.parse(match.group(1)!);
+      if (match.group(1) != null) {
+        counter = int.parse(match.group(1)!);
+      }
     }
     String newPath = p.join(destDir, originalName);
     if (!File(newPath).existsSync() && !Directory(newPath).existsSync()) return newPath;
@@ -78,7 +80,7 @@ class FileOperationsService {
     }
   }
 
-  // ─── COPY ────────────────────────────────────────────────────────────────
+  // ─── COPY ─────────────────────────────────────────────────────────────────
   static Future<bool> copyEntity(String sourcePath, String destDirPath, {bool autoRename = true}) async {
     try {
       final originalName = p.basename(sourcePath);
@@ -103,7 +105,7 @@ class FileOperationsService {
     }
   }
 
-  // ─── MOVE ────────────────────────────────────────────────────────────────
+  // ─── MOVE ─────────────────────────────────────────────────────────────────
   static Future<bool> moveEntity(String sourcePath, String destDirPath, {bool autoRename = false}) async {
     try {
       final originalName = p.basename(sourcePath);
@@ -124,8 +126,11 @@ class FileOperationsService {
         }
       } catch (_) {
         final copied = await copyEntity(sourcePath, destDirPath, autoRename: autoRename);
-        if (copied) await deleteEntity(sourcePath);
-        else return false;
+        if (copied) {
+          await deleteEntity(sourcePath);
+        } else {
+          return false;
+        }
       }
       return true;
     } catch (e) {

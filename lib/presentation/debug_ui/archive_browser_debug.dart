@@ -2,8 +2,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import '../../services/operations/archive_service.dart';
-import '../../core/models/file_entry.dart';
-import '../../core/enums/file_type.dart';
 
 class ArchiveBrowserScreen extends StatefulWidget {
   final String archivePath;
