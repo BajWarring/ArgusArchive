@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../../core/models/file_entry.dart';
 import '../../services/operations/file_operations_service.dart';
 import '../../services/storage/bookmarks_service.dart';
+import '../../services/storage/trash_service.dart';
 import 'providers.dart';
 
 class FileDialogsDebug {
@@ -28,7 +29,6 @@ class FileDialogsDebug {
   // ─── RENAME ──────────────────────────────────────────────────────────────
   static Future<String?> showRenameDialog(BuildContext context, String currentName) async {
     final controller = TextEditingController(text: currentName);
-    // Select only the name without extension for convenience
     final dotIndex = currentName.lastIndexOf('.');
     final selection = dotIndex > 0
         ? TextSelection(baseOffset: 0, extentOffset: dotIndex)
@@ -100,7 +100,7 @@ class FileDialogsDebug {
     );
   }
 
-  // ─── COMPRESS DIALOG (with format picker) ────────────────────────────────
+  // ─── COMPRESS DIALOG (with format picker) ───────────────────────────────
   static Future<Map<String, String>?> showCompressDialog(BuildContext context, String defaultName) async {
     final controller = TextEditingController(text: defaultName);
     String selectedFormat = 'zip';
@@ -148,7 +148,7 @@ class FileDialogsDebug {
     );
   }
 
-  // ─── DELETE CONFIRMATION ────────────────────────────────────────────────
+  // ─── DELETE CONFIRMATION ─────────────────────────────────────────────────
   static void showDeleteConfirmation(BuildContext context, WidgetRef ref, List<String> filePaths) {
     showDialog(
       context: context,
@@ -172,7 +172,6 @@ class FileDialogsDebug {
                   SnackBar(
                     content: Text('${filePaths.length} item(s) moved to trash'),
                     action: SnackBarAction(label: 'UNDO', onPressed: () async {
-                      // Restore last batch from trash
                       final items = await TrashService.getItems();
                       for (final path in filePaths) {
                         final item = items.firstWhere((i) => i.originalPath == path, orElse: () => items.last);
@@ -203,7 +202,7 @@ class FileDialogsDebug {
     );
   }
 
-  // ─── COLLISION DIALOG ───────────────────────────────────────────────────
+  // ─── COLLISION DIALOG ────────────────────────────────────────────────────
   static Future<Map<String, dynamic>?> showAdvancedCollisionDialog(BuildContext context, String sourcePath) {
     bool applyToAll = false;
     return showDialog<Map<String, dynamic>>(

@@ -1,40 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../ui_theme.dart';
 
-// Providers backed by SharedPreferences
-final resumePlaybackProvider = StateNotifierProvider<_BoolPref, bool>(
-  (ref) => _BoolPref('pref_resume_playback', true),
-);
-final autoPlayNextProvider = StateNotifierProvider<_BoolPref, bool>(
-  (ref) => _BoolPref('pref_auto_play_next', false),
-);
-final loopVideoProvider = StateNotifierProvider<_BoolPref, bool>(
-  (ref) => _BoolPref('pref_loop_video', false),
-);
-final swipeGesturesProvider = StateNotifierProvider<_BoolPref, bool>(
-  (ref) => _BoolPref('pref_swipe_gestures', true),
-);
-final darkModeProvider = StateNotifierProvider<_BoolPref, bool>(
-  (ref) => _BoolPref('pref_dark_mode', true),
-);
-
-class _BoolPref extends StateNotifier<bool> {
-  final String key;
-  _BoolPref(this.key, bool defaultValue) : super(defaultValue) {
-    _load(defaultValue);
-  }
-  void _load(bool def) async {
-    final prefs = await SharedPreferences.getInstance();
-    state = prefs.getBool(key) ?? def;
-  }
-  void toggle() async {
-    state = !state;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, state);
-  }
-}
+// In-memory preference providers (no persistence dependency required)
+final resumePlaybackProvider = StateProvider<bool>((ref) => true);
+final autoPlayNextProvider = StateProvider<bool>((ref) => false);
+final loopVideoProvider = StateProvider<bool>((ref) => false);
+final swipeGesturesProvider = StateProvider<bool>((ref) => true);
+final darkModeProvider = StateProvider<bool>((ref) => true);
 
 class VideoSettingsView extends ConsumerWidget {
   const VideoSettingsView({super.key});
@@ -102,7 +75,7 @@ class VideoSettingsView extends ConsumerWidget {
 
   Widget _divider() => const Divider(height: 1, thickness: 1, color: Colors.white10, indent: 56);
 
-  Widget _switchRow(BuildContext context, WidgetRef ref, String title, String subtitle, IconData icon, dynamic provider) {
+  Widget _switchRow(BuildContext context, WidgetRef ref, String title, String subtitle, IconData icon, StateProvider<bool> provider) {
     final value = ref.watch(provider);
     return ListTile(
       leading: Icon(icon, color: ArgusColors.primary, size: 22),
@@ -111,7 +84,7 @@ class VideoSettingsView extends ConsumerWidget {
       trailing: Switch(
         value: value,
         activeColor: ArgusColors.primary,
-        onChanged: (_) => ref.read(provider.notifier).toggle(),
+        onChanged: (_) => ref.read(provider.notifier).state = !value,
       ),
     );
   }

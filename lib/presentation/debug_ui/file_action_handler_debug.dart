@@ -29,9 +29,6 @@ class FileActionHandlerDebug {
   }
 
   static void handleBulkActions(BuildContext context, WidgetRef ref, String action, List<String> paths) async {
-    final queue = ref.read(transferQueueProvider);
-    final currentAdapter = ref.read(storageAdapterProvider);
-
     if (action == 'copy') {
       ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.copy);
       ref.read(selectedFilesProvider.notifier).state = {};
@@ -58,7 +55,7 @@ class FileActionHandlerDebug {
       ref.read(selectedFilesProvider.notifier).state = {};
     } else if (action == 'details') {
       final entries = await getEntriesFromPaths(paths, ref.read(storageAdapterProvider));
-      if (context.mounted) FileDialogsDebug.showDetailsDialog(context, entries);
+      if (context.mounted) { FileDialogsDebug.showDetailsDialog(context, entries); }
     }
   }
 
@@ -77,7 +74,7 @@ class FileActionHandlerDebug {
       final indexer = await ref.read(indexServiceProvider.future);
       final roots = await Future.value(['/storage/emulated/0']);
       await indexer.start(rootPaths: roots, rebuild: true);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started!')));
+      if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started!'))); }
     } else if (value == 'shortcut_video') {
       final success = await ShortcutService.createVideoPlayerShortcut();
       if (context.mounted) {
@@ -136,15 +133,15 @@ class FileActionHandlerDebug {
               action = result['action'];
               if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
             }
-            if (action == 'skip') continue;
-            else if (action == 'replace') await File(finalPath).delete();
-            else if (action == 'rename') finalPath = FileOperationsService.getRenameUniquePath(p.dirname(finalPath), p.basename(finalPath));
+            if (action == 'skip') { continue; }
+            else if (action == 'replace') { await File(finalPath).delete(); }
+            else if (action == 'rename') { finalPath = FileOperationsService.getRenameUniquePath(p.dirname(finalPath), p.basename(finalPath)); }
           }
           await tempFile.rename(finalPath);
         }
       }
 
-      if (Directory(tempExtractDir).existsSync()) await Directory(tempExtractDir).delete(recursive: true);
+      if (Directory(tempExtractDir).existsSync()) { await Directory(tempExtractDir).delete(recursive: true); }
       ref.read(clipboardProvider.notifier).state = ClipboardState();
       ref.invalidate(directoryContentsProvider);
       return;
@@ -173,9 +170,9 @@ class FileActionHandlerDebug {
             action = result['action'];
             if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
           }
-          if (action == 'skip') continue;
-          else if (action == 'replace') await FileOperationsService.deleteEntity(targetPath);
-          else if (action == 'rename') targetPath = FileOperationsService.getRenameUniquePath(destDir, originalName);
+          if (action == 'skip') { continue; }
+          else if (action == 'replace') { await FileOperationsService.deleteEntity(targetPath); }
+          else if (action == 'rename') { targetPath = FileOperationsService.getRenameUniquePath(destDir, originalName); }
         }
       }
 

@@ -2,9 +2,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import '../../services/operations/archive_service.dart';
-import '../../features/file_handlers/image_handler.dart';
-import '../../features/file_handlers/text_handler.dart';
-import '../../features/file_handlers/pdf_handler.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 
@@ -73,7 +70,6 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
   }
 
   Future<void> _showExtractDialog(List<String> entryPaths) async {
-    // Default extract to same dir as archive
     final defaultDest = p.dirname(widget.archivePath);
     final controller = TextEditingController(text: defaultDest);
 
@@ -128,7 +124,7 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
     }
 
     if (mounted) {
-      Navigator.of(context).pop(); // close progress
+      Navigator.of(context).pop();
       setState(() => _selected.clear());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Extracted ${entryPaths.length} item(s) to ${controller.text}'), backgroundColor: Colors.teal),
@@ -145,7 +141,6 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
     final isPdf = ext == 'pdf';
 
     if (!isImage && !isText && !isPdf) {
-      // Unsupported preview — offer extract
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -163,7 +158,6 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
       return;
     }
 
-    // Show loading
     showDialog(
       context: context, barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
@@ -171,15 +165,12 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
 
     final bytes = await ArchiveService.readArchiveEntry(widget.archivePath, entry.fullPath);
     if (!mounted) return;
-    Navigator.of(context).pop(); // close loading
+    Navigator.of(context).pop();
 
     if (bytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to read file from archive')));
       return;
     }
-
-    // Use a virtual FileEntry for handlers
-    final fakeEntry = FileEntry(id: entry.fullPath, path: entry.name, type: isImage ? FileType.image : isPdf ? FileType.document : FileType.document, size: entry.size, modifiedAt: DateTime.now());
 
     if (isImage) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => _ImagePreview(bytes: Uint8List.fromList(bytes), name: entry.name)));
@@ -284,8 +275,8 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
                             : PopupMenuButton<String>(
                                 icon: const Icon(Icons.more_vert, size: 18),
                                 onSelected: (v) {
-                                  if (v == 'extract') _extractEntry(entry);
-                                  if (v == 'select') _toggleSelect(entry);
+                                  if (v == 'extract') { _extractEntry(entry); }
+                                  if (v == 'select') { _toggleSelect(entry); }
                                 },
                                 itemBuilder: (_) => const [
                                   PopupMenuItem(value: 'extract', child: Row(children: [Icon(Icons.download, size: 18), SizedBox(width: 8), Text('Extract')])),

@@ -15,7 +15,6 @@ import 'header_icons_debug.dart';
 import 'file_thumbnail_debug.dart';
 import 'file_bottom_sheets_debug.dart';
 import 'file_action_handler_debug.dart';
-import 'file_dialog_debug.dart';
 
 class FileBrowserDebug extends ConsumerWidget {
   const FileBrowserDebug({super.key});
@@ -103,10 +102,10 @@ class FileBrowserDebug extends ConsumerWidget {
               if (a.isDirectory && !b.isDirectory) return -1;
               if (!a.isDirectory && b.isDirectory) return 1;
               int result = 0;
-              if (sortType == FileSortType.size) result = a.size.compareTo(b.size);
-              else if (sortType == FileSortType.date) result = a.modifiedAt.compareTo(b.modifiedAt);
-              else if (sortType == FileSortType.type) result = p.extension(a.path).compareTo(p.extension(b.path));
-              else result = p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
+              if (sortType == FileSortType.size) { result = a.size.compareTo(b.size); }
+              else if (sortType == FileSortType.date) { result = a.modifiedAt.compareTo(b.modifiedAt); }
+              else if (sortType == FileSortType.type) { result = p.extension(a.path).compareTo(p.extension(b.path)); }
+              else { result = p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase()); }
               return sortOrder == FileSortOrder.ascending ? result : -result;
             });
 
@@ -162,7 +161,7 @@ class FileBrowserDebug extends ConsumerWidget {
                         return;
                       }
                       if (hasClipboard) {
-                        if (isDirectory) ref.read(currentPathProvider.notifier).state = file.path;
+                        if (isDirectory) { ref.read(currentPathProvider.notifier).state = file.path; }
                         return;
                       }
                       if (isDirectory) {
@@ -176,7 +175,7 @@ class FileBrowserDebug extends ConsumerWidget {
                           FileBottomSheetsDebug.showArchiveTapMenu(context, ref, file, isApk: p.extension(file.path).toLowerCase() == '.apk');
                         } else if (context.mounted) {
                           final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file);
-                          if (handler != null) handler.open(context, file, currentAdapter);
+                          if (handler != null) { handler.open(context, file, currentAdapter); }
                         }
                       }
                     },

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -25,7 +24,6 @@ class FileBottomSheetsDebug {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle bar
             Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(2))),
             if (isApk)
               ListTile(
@@ -123,14 +121,13 @@ class FileBottomSheetsDebug {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
-          // Start extraction
           ArchiveService.extractZip(zipPath, destPath, onProgress: (prog, file) {
             progress = prog;
             currentFile = p.basename(file);
-            if (ctx.mounted) setDlg(() {});
+            if (ctx.mounted) { setDlg(() {}); }
             if (prog >= 1.0) {
               Future.delayed(const Duration(milliseconds: 300), () {
-                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (ctx.mounted) { Navigator.of(ctx).pop(); }
                 ref.invalidate(directoryContentsProvider);
               });
             }
@@ -171,7 +168,6 @@ class FileBottomSheetsDebug {
             children: [
               Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(2))),
 
-              // Selection header
               ListTile(
                 tileColor: Colors.blueGrey.withValues(alpha: 0.15),
                 leading: const Icon(Icons.radio_button_checked, color: Colors.teal),
@@ -201,7 +197,6 @@ class FileBottomSheetsDebug {
                   ListTile(leading: const Icon(Icons.open_in_new), title: const Text('Open'),
                     onTap: () { Navigator.pop(ctx); final h = ref.read(fileHandlerRegistryProvider).handlerFor(file); if (h != null) h.open(context, file, ref.read(storageAdapterProvider)); }),
 
-                // RENAME
                 ListTile(
                   leading: const Icon(Icons.drive_file_rename_outline, color: Colors.amber),
                   title: const Text('Rename'),
@@ -213,7 +208,7 @@ class FileBottomSheetsDebug {
                       final ok = await FileOperationsService.renameEntity(filePath, newPath);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Renamed to $newName' : 'Rename failed')));
-                        if (ok) ref.invalidate(directoryContentsProvider);
+                        if (ok) { ref.invalidate(directoryContentsProvider); }
                       }
                     }
                   },
@@ -260,7 +255,7 @@ class FileBottomSheetsDebug {
                 onTap: () async {
                   Navigator.pop(ctx);
                   final entries = await FileActionHandlerDebug.getEntriesFromPaths(targetPaths, ref.read(storageAdapterProvider));
-                  if (context.mounted) FileDialogsDebug.showDetailsDialog(context, entries);
+                  if (context.mounted) { FileDialogsDebug.showDetailsDialog(context, entries); }
                 },
               ),
               ListTile(
