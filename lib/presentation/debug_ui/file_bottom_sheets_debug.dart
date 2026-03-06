@@ -4,7 +4,6 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/models/file_entry.dart';
-import '../../core/enums/file_type.dart';
 import '../../services/operations/archive_service.dart';
 import '../../services/operations/file_operations_service.dart';
 
@@ -568,16 +567,4 @@ class FileBottomSheetsDebug {
     return Colors.tealAccent;
   }
 
-  // file type badge for the header (derived from FileType enum)
-  static IconData _iconForType(FileType t) {
-    switch (t) {
-      case FileType.image: return Icons.image;
-      case FileType.video: return Icons.movie;
-      case FileType.audio: return Icons.audiotrack;
-      case FileType.document: return Icons.description;
-      case FileType.archive: return Icons.archive;
-      case FileType.dir: return Icons.folder;
-      default: return Icons.insert_drive_file;
-    }
-  }
 }
