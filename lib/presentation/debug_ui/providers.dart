@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../adapters/local/local_storage_adapter.dart';
 import '../../core/interfaces/storage_adapter.dart';
@@ -11,53 +12,72 @@ import '../../features/file_handlers/video_handler.dart';
 import '../../services/indexer/index_service.dart';
 import '../../services/transfer/transfer_queue.dart';
 import '../../services/transfer/transfer_task.dart';
-import 'search_providers.dart'; 
+import '../../services/storage/bookmarks_service.dart';
+import '../../services/storage/trash_service.dart';
+import 'search_providers.dart';
 import '../../services/storage/storage_volumes_service.dart';
 
-final storageAdapterProvider = StateProvider<StorageAdapter>((ref) {
-  return LocalStorageAdapter();
-});
-
+// ─── STORAGE & NAVIGATION ────────────────────────────────────────────────────
+final storageAdapterProvider = StateProvider<StorageAdapter>((ref) => LocalStorageAdapter());
 final realParentPathProvider = StateProvider<String?>((ref) => null);
+final currentPathProvider = StateProvider<String>((ref) => '/storage/emulated/0');
 
-final currentPathProvider = StateProvider<String>((ref) {
-  return '/storage/emulated/0'; 
-});
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
+final showHiddenFilesProvider = StateProvider<bool>((ref) => false);
+final useGridViewProvider = StateProvider<bool>((ref) => false);
+final useDebugUiProvider = StateProvider<bool>((ref) => false);
 
+// ─── DIRECTORY CONTENTS ───────────────────────────────────────────────────────
 final directoryContentsProvider = FutureProvider.autoDispose<List<FileEntry>>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final path = ref.watch(currentPathProvider);
-  
+  final showHidden = ref.watch(showHiddenFilesProvider);
+
   try {
-    return await adapter.list(path);
+    final all = await adapter.list(path);
+    if (showHidden) return all;
+    return all.where((e) => !e.path.split('/').last.startsWith('.')).toList();
   } catch (e) {
     throw Exception('Failed to read directory: $e');
   }
 });
 
+// ─── FOLDER SIZE ──────────────────────────────────────────────────────────────
+final folderSizeProvider = FutureProvider.autoDispose.family<int, String>((ref, dirPath) async {
+  int total = 0;
+  try {
+    await for (final entity in Directory(dirPath).list(recursive: true, followLinks: false)) {
+      if (entity is File) {
+        final stat = await entity.stat();
+        total += stat.size;
+      }
+    }
+  } catch (_) {}
+  return total;
+});
+
+// ─── FILE HANDLERS ────────────────────────────────────────────────────────────
 final fileHandlerRegistryProvider = Provider<FileHandlerRegistry>((ref) {
   final registry = FileHandlerRegistry();
-  
   registry.register(ImageHandler());
   registry.register(SvgHandler());
   registry.register(PdfHandler());
   registry.register(TextHandler());
   registry.register(VideoHandler());
-  
   return registry;
 });
 
+// ─── INDEXER ──────────────────────────────────────────────────────────────────
 final indexServiceProvider = FutureProvider<IndexService>((ref) async {
   final adapter = ref.watch(storageAdapterProvider);
   final db = await ref.watch(searchDatabaseProvider.future);
   final service = IndexService(adapter: adapter, searchDb: db);
-  
   final roots = await StorageVolumesService.getStorageRoots();
   service.autoStart(roots);
-  
   return service;
 });
 
+// ─── TRANSFER QUEUE ───────────────────────────────────────────────────────────
 final transferQueueProvider = Provider<TransferQueue>((ref) {
   final queue = TransferQueue(maxConcurrent: 2);
   ref.onDispose(() { queue.dispose(); });
@@ -69,6 +89,7 @@ final queueTasksStreamProvider = StreamProvider<List<TransferTask>>((ref) {
   return queue.queueStream;
 });
 
+// ─── CLIPBOARD ────────────────────────────────────────────────────────────────
 enum ClipboardAction { copy, cut, extract, none }
 
 class ClipboardState {
@@ -77,13 +98,17 @@ class ClipboardState {
   ClipboardState({this.paths = const [], this.action = ClipboardAction.none});
 }
 
-final clipboardProvider = StateProvider<ClipboardState>((ref) {
-  return ClipboardState();
-});
-
+final clipboardProvider = StateProvider<ClipboardState>((ref) => ClipboardState());
 final selectedFilesProvider = StateProvider<Set<String>>((ref) => {});
 
-// ==========================================
-// NEW: Global UI Mode Toggle (Safely placed here!)
-// ==========================================
-final useDebugUiProvider = StateProvider<bool>((ref) => false);
+// ─── BOOKMARKS ────────────────────────────────────────────────────────────────
+final bookmarksProvider = FutureProvider.autoDispose<List<BookmarkEntry>>((ref) async {
+  await BookmarksService.init();
+  return BookmarksService.getAll();
+});
+
+// ─── TRASH ────────────────────────────────────────────────────────────────────
+final trashItemsProvider = FutureProvider.autoDispose<List<TrashItem>>((ref) async {
+  await TrashService.init();
+  return TrashService.getItems();
+});
