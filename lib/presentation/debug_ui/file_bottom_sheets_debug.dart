@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/models/file_entry.dart';
+import '../../core/enums/file_type.dart';
 import '../../services/operations/archive_service.dart';
 import '../../services/operations/file_operations_service.dart';
 
@@ -14,108 +15,448 @@ import 'archive_browser_debug.dart';
 
 class FileBottomSheetsDebug {
 
-  // ─── ARCHIVE TAP MENU ────────────────────────────────────────────────────
-  static void showArchiveTapMenu(BuildContext context, WidgetRef ref, FileEntry file, {required bool isApk}) {
+  // ─── shared constants ─────────────────────────────────────────────────────
+  static const _sheetBg    = Color(0xFF1E1E2E);
+  static const _divColor   = Color(0xFF2A2A3A);
+  static const _radius     = BorderRadius.vertical(top: Radius.circular(28));
+
+  // ─── helpers ──────────────────────────────────────────────────────────────
+  static Widget _handle() => Center(
+    child: Container(
+      width: 36, height: 4,
+      margin: const EdgeInsets.only(top: 10, bottom: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade600,
+        borderRadius: BorderRadius.circular(2),
+      ),
+    ),
+  );
+
+  static Widget _fileHeader(FileEntry file, {int selectedCount = 1}) {
+    final isMulti  = selectedCount > 1;
+    final name     = isMulti ? '$selectedCount items selected' : p.basename(file.path);
+    final subtitle = isMulti
+        ? null
+        : '${_fmtSize(file.size)} · ${_fmtDate(file.modifiedAt)}';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(
+        children: [
+          Container(
+            width: 52, height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF252540),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isMulti
+                  ? Icons.folder_copy
+                  : _iconFor(file),
+              color: isMulti ? Colors.teal : _colorFor(file),
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+                if (subtitle != null)
+                  Text(subtitle,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _action({
+    required BuildContext ctx,
+    required IconData icon,
+    required String label,
+    Color iconColor = Colors.white,
+    Color? labelColor,
+    required VoidCallback onTap,
+    bool enabled = true,
+  }) {
+    return ListTile(
+      dense: true,
+      enabled: enabled,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+      leading: Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: iconColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: iconColor, size: 20),
+      ),
+      title: Text(label,
+          style: TextStyle(
+              fontSize: 14,
+              color: labelColor ?? Colors.white,
+              fontWeight: FontWeight.w500)),
+      onTap: () { Navigator.pop(ctx); onTap(); },
+    );
+  }
+
+  static Widget _divider() =>
+      const Divider(height: 1, thickness: 1, color: _divColor, indent: 20, endIndent: 20);
+
+  // ─── ARCHIVE TAP MENU ─────────────────────────────────────────────────────
+  static void showArchiveTapMenu(
+    BuildContext context,
+    WidgetRef ref,
+    FileEntry file, {
+    required bool isApk,
+  }) {
     final filePath = file.path;
+
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(2))),
-            if (isApk)
-              ListTile(
-                leading: const Icon(Icons.android, color: Colors.green),
-                title: const Text('Install APK'),
-                onTap: () { Navigator.pop(ctx); final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file); if (handler != null) handler.open(context, file, ref.read(storageAdapterProvider)); },
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(color: _sheetBg, borderRadius: _radius),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _handle(),
+              _fileHeader(file),
+              const Divider(height: 1, color: _divColor),
+              const SizedBox(height: 4),
+
+              if (isApk)
+                _action(
+                  ctx: ctx,
+                  icon: Icons.android,
+                  iconColor: Colors.green,
+                  label: 'Install APK',
+                  onTap: () {
+                    final handler = ref.read(fileHandlerRegistryProvider).handlerFor(file);
+                    handler?.open(context, file, ref.read(storageAdapterProvider));
+                  },
+                ),
+
+              _action(
+                ctx: ctx,
+                icon: Icons.folder_open,
+                iconColor: Colors.blue,
+                label: 'Browse Contents',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => ArchiveBrowserScreen(archivePath: filePath)),
+                ),
               ),
-            ListTile(
-              leading: const Icon(Icons.folder_open, color: Colors.blue),
-              title: const Text('Browse Contents'),
-              subtitle: const Text('View & extract individual files'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => ArchiveBrowserScreen(archivePath: filePath)));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.unarchive, color: Colors.orange),
-              title: const Text('Extract Here'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                _showExtractionProgress(context, ref, filePath, p.dirname(filePath));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.drive_file_move, color: Colors.teal),
-              title: const Text('Extract To...'),
-              onTap: () {
-                Navigator.pop(ctx);
-                ref.read(clipboardProvider.notifier).state = ClipboardState(paths: [filePath], action: ClipboardAction.extract);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.verified, color: Colors.purple),
-              title: const Text('Test Integrity'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                showDialog(
-                  context: context, barrierDismissible: false,
-                  builder: (_) => const AlertDialog(title: Text('Testing...'), content: Center(child: CircularProgressIndicator())),
-                );
-                final ok = await ArchiveService.testArchiveIntegrity(filePath);
-                if (!context.mounted) return;
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(ok ? '✓ Archive is intact' : '✗ Archive may be corrupt!'),
-                  backgroundColor: ok ? Colors.teal : Colors.red,
-                ));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline, color: Colors.blueGrey),
-              title: const Text('Archive Info'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                showDialog(
-                  context: context, barrierDismissible: false,
-                  builder: (_) => const AlertDialog(content: Center(child: CircularProgressIndicator())),
-                );
-                final info = await ArchiveService.getArchiveInfo(filePath);
-                if (!context.mounted) return;
-                Navigator.of(context).pop();
-                showDialog(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: Text(p.basename(filePath)),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _row('Format', info.format),
-                        _row('Files', '${info.fileCount}'),
-                        _row('Folders', '${info.dirCount}'),
-                        _row('Original Size', _fmtSize(info.totalUncompressedSize)),
-                        _row('Compressed', _fmtSize(info.compressedSize)),
-                        if (info.totalUncompressedSize > 0)
-                          _row('Ratio', '${((1 - info.compressedSize / info.totalUncompressedSize) * 100).toStringAsFixed(1)}% saved'),
-                      ],
+              _action(
+                ctx: ctx,
+                icon: Icons.unarchive,
+                iconColor: Colors.orange,
+                label: 'Extract Here',
+                onTap: () => _extractWithProgress(context, ref, filePath, p.dirname(filePath)),
+              ),
+              _action(
+                ctx: ctx,
+                icon: Icons.drive_file_move,
+                iconColor: Colors.teal,
+                label: 'Extract To…',
+                onTap: () => ref.read(clipboardProvider.notifier).state =
+                    ClipboardState(paths: [filePath], action: ClipboardAction.extract),
+              ),
+
+              _divider(),
+
+              _action(
+                ctx: ctx,
+                icon: Icons.verified_outlined,
+                iconColor: Colors.purple,
+                label: 'Test Integrity',
+                onTap: () async {
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => const AlertDialog(
+                      title: Text('Testing…'),
+                      content: Center(child: CircularProgressIndicator()),
                     ),
-                    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-                  ),
-                );
-              },
-            ),
-          ],
+                  );
+                  final ok = await ArchiveService.testArchiveIntegrity(filePath);
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(ok ? '✓ Archive is intact' : '✗ Archive may be corrupt!'),
+                    backgroundColor: ok ? Colors.teal : Colors.red,
+                  ));
+                },
+              ),
+              _action(
+                ctx: ctx,
+                icon: Icons.info_outline,
+                iconColor: Colors.blueGrey,
+                label: 'Archive Info',
+                onTap: () async {
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => const AlertDialog(content: Center(child: CircularProgressIndicator())),
+                  );
+                  final info = await ArchiveService.getArchiveInfo(filePath);
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop();
+                  _showArchiveInfoDialog(context, filePath, info);
+                },
+              ),
+
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  static void _showExtractionProgress(BuildContext context, WidgetRef ref, String zipPath, String destPath) {
+  // ─── LONG-PRESS / SELECTION MENU ─────────────────────────────────────────
+  static void showLongPressMenu(
+    BuildContext context,
+    WidgetRef ref,
+    FileEntry file,
+    bool isArchive,
+    bool isApk,
+  ) {
+    final filePath      = file.path;
+    final selectedFiles = ref.read(selectedFilesProvider);
+    final isSelectionMode = selectedFiles.isNotEmpty;
+    final targetPaths   = isSelectionMode && selectedFiles.contains(filePath)
+        ? selectedFiles.toList()
+        : [filePath];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(color: _sheetBg, borderRadius: _radius),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _handle(),
+                _fileHeader(file, selectedCount: targetPaths.length),
+                const Divider(height: 1, color: _divColor),
+                const SizedBox(height: 4),
+
+                // ── Select / deselect ──────────────────────────────────────
+                _action(
+                  ctx: ctx,
+                  icon: isSelectionMode
+                      ? Icons.deselect
+                      : Icons.radio_button_checked,
+                  iconColor: Colors.teal,
+                  label: isSelectionMode
+                      ? '${targetPaths.length} items selected  (tap to deselect all)'
+                      : 'Select',
+                  onTap: () {
+                    if (isSelectionMode) {
+                      ref.read(selectedFilesProvider.notifier).state = {};
+                    } else {
+                      final set = Set<String>.from(selectedFiles)..add(filePath);
+                      ref.read(selectedFilesProvider.notifier).state = set;
+                    }
+                  },
+                ),
+
+                _divider(),
+
+                // ── Type-specific actions ──────────────────────────────────
+                if (!isSelectionMode) ...[
+                  if (isApk)
+                    _action(
+                      ctx: ctx,
+                      icon: Icons.android,
+                      iconColor: Colors.green,
+                      label: 'Install APK',
+                      onTap: () {
+                        final h = ref.read(fileHandlerRegistryProvider).handlerFor(file);
+                        h?.open(context, file, ref.read(storageAdapterProvider));
+                      },
+                    ),
+                  if (isArchive) ...[
+                    _action(
+                      ctx: ctx,
+                      icon: Icons.folder_open,
+                      iconColor: Colors.blue,
+                      label: 'Browse Contents',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => ArchiveBrowserScreen(archivePath: filePath)),
+                      ),
+                    ),
+                    _action(
+                      ctx: ctx,
+                      icon: Icons.unarchive,
+                      iconColor: Colors.orange,
+                      label: 'Extract Here',
+                      onTap: () => _extractWithProgress(context, ref, filePath, p.dirname(filePath)),
+                    ),
+                    _action(
+                      ctx: ctx,
+                      icon: Icons.drive_file_move,
+                      iconColor: Colors.teal,
+                      label: 'Extract To…',
+                      onTap: () => ref.read(clipboardProvider.notifier).state =
+                          ClipboardState(paths: [filePath], action: ClipboardAction.extract),
+                    ),
+                  ],
+                  if (!file.isDirectory && !isApk && !isArchive)
+                    _action(
+                      ctx: ctx,
+                      icon: Icons.open_in_new,
+                      iconColor: Colors.lightBlue,
+                      label: 'Open',
+                      onTap: () {
+                        final h = ref.read(fileHandlerRegistryProvider).handlerFor(file);
+                        h?.open(context, file, ref.read(storageAdapterProvider));
+                      },
+                    ),
+                  _action(
+                    ctx: ctx,
+                    icon: Icons.drive_file_rename_outline,
+                    iconColor: Colors.amber,
+                    label: 'Rename',
+                    onTap: () async {
+                      final newName =
+                          await FileDialogsDebug.showRenameDialog(context, p.basename(filePath));
+                      if (newName != null && newName.isNotEmpty && newName != p.basename(filePath)) {
+                        final newPath = p.join(p.dirname(filePath), newName);
+                        final ok = await FileOperationsService.renameEntity(filePath, newPath);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(ok ? 'Renamed to $newName' : 'Rename failed')),
+                          );
+                          if (ok) ref.invalidate(directoryContentsProvider);
+                        }
+                      }
+                    },
+                  ),
+                  _divider(),
+                ],
+
+                // ── Universal actions ─────────────────────────────────────
+                _action(
+                  ctx: ctx,
+                  icon: Icons.content_copy,
+                  iconColor: Colors.blueGrey,
+                  label: targetPaths.length > 1 ? 'Copy ${targetPaths.length} items' : 'Copy',
+                  onTap: () {
+                    ref.read(clipboardProvider.notifier).state =
+                        ClipboardState(paths: targetPaths, action: ClipboardAction.copy);
+                    ref.read(selectedFilesProvider.notifier).state = {};
+                  },
+                ),
+                _action(
+                  ctx: ctx,
+                  icon: Icons.content_cut,
+                  iconColor: Colors.blueGrey,
+                  label: targetPaths.length > 1 ? 'Cut ${targetPaths.length} items' : 'Cut',
+                  onTap: () {
+                    ref.read(clipboardProvider.notifier).state =
+                        ClipboardState(paths: targetPaths, action: ClipboardAction.cut);
+                    ref.read(selectedFilesProvider.notifier).state = {};
+                  },
+                ),
+                _action(
+                  ctx: ctx,
+                  icon: Icons.folder_zip_outlined,
+                  iconColor: Colors.teal,
+                  label: targetPaths.length > 1
+                      ? 'Compress ${targetPaths.length} items'
+                      : 'Compress',
+                  onTap: () async {
+                    final defaultName = targetPaths.length == 1
+                        ? p.basenameWithoutExtension(targetPaths.first)
+                        : 'Archive';
+                    final result = await FileDialogsDebug.showCompressDialog(context, defaultName);
+                    if (result != null && result['name']!.isNotEmpty) {
+                      final ext  = result['format']!;
+                      final dest = p.join(p.dirname(filePath), '${result['name']}.$ext');
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Compressing…')));
+                      await ArchiveService.compressEntities(targetPaths, dest,
+                          format: ext.replaceAll('.', ''));
+                      ref.read(selectedFilesProvider.notifier).state = {};
+                      ref.invalidate(directoryContentsProvider);
+                    }
+                  },
+                ),
+                _action(
+                  ctx: ctx,
+                  icon: Icons.share_outlined,
+                  iconColor: Colors.indigo,
+                  label: 'Share',
+                  onTap: () async {
+                    await Share.shareXFiles(
+                        targetPaths.map((path) => XFile(path)).toList(),
+                        text: 'Shared via Argus Archive');
+                    ref.read(selectedFilesProvider.notifier).state = {};
+                  },
+                ),
+                _action(
+                  ctx: ctx,
+                  icon: Icons.info_outline,
+                  iconColor: Colors.blueGrey,
+                  label: 'Details',
+                  onTap: () async {
+                    final entries = await FileActionHandlerDebug.getEntriesFromPaths(
+                        targetPaths, ref.read(storageAdapterProvider));
+                    if (context.mounted) {
+                      FileDialogsDebug.showDetailsDialog(context, entries);
+                    }
+                  },
+                ),
+
+                _divider(),
+
+                _action(
+                  ctx: ctx,
+                  icon: Icons.delete_outline,
+                  iconColor: Colors.orange,
+                  labelColor: Colors.orange,
+                  label: targetPaths.length > 1
+                      ? 'Move ${targetPaths.length} items to Trash'
+                      : 'Move to Trash',
+                  onTap: () => FileDialogsDebug.showDeleteConfirmation(context, ref, targetPaths),
+                ),
+
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── extraction progress ──────────────────────────────────────────────────
+  static void _extractWithProgress(
+    BuildContext context,
+    WidgetRef ref,
+    String zipPath,
+    String destPath,
+  ) {
     double progress = 0;
-    String currentFile = 'Starting...';
+    String currentFile = 'Starting…';
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -124,157 +465,70 @@ class FileBottomSheetsDebug {
           ArchiveService.extractZip(zipPath, destPath, onProgress: (prog, file) {
             progress = prog;
             currentFile = p.basename(file);
-            if (ctx.mounted) { setDlg(() {}); }
+            if (ctx.mounted) setDlg(() {});
             if (prog >= 1.0) {
               Future.delayed(const Duration(milliseconds: 300), () {
-                if (ctx.mounted) { Navigator.of(ctx).pop(); }
+                if (ctx.mounted) Navigator.of(ctx).pop();
                 ref.invalidate(directoryContentsProvider);
               });
             }
           });
           return AlertDialog(
-            title: const Row(children: [Icon(Icons.unarchive, color: Colors.teal), SizedBox(width: 8), Text('Extracting')]),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(currentFile, style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 12),
-                LinearProgressIndicator(value: progress, color: Colors.teal, backgroundColor: Colors.teal.withValues(alpha: 0.2)),
-                const SizedBox(height: 8),
-                Text('${(progress * 100).toStringAsFixed(0)}%'),
-              ],
-            ),
+            title: const Row(children: [
+              Icon(Icons.unarchive, color: Colors.teal),
+              SizedBox(width: 8),
+              Text('Extracting'),
+            ]),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(currentFile,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  color: Colors.teal,
+                  backgroundColor: Colors.teal.withValues(alpha: 0.2),
+                  minHeight: 8,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('${(progress * 100).toStringAsFixed(0)}%'),
+            ]),
           );
         },
       ),
     );
   }
 
-  // ─── LONG PRESS MENU ─────────────────────────────────────────────────────
-  static void showLongPressMenu(BuildContext context, WidgetRef ref, FileEntry file, bool isArchive, bool isApk) {
-    final filePath = file.path;
-    final selectedFiles = ref.read(selectedFilesProvider);
-    final isSelectionMode = selectedFiles.isNotEmpty;
-    final targetPaths = isSelectionMode && selectedFiles.contains(filePath) ? selectedFiles.toList() : [filePath];
-
-    showModalBottomSheet(
+  static void _showArchiveInfoDialog(BuildContext context, String filePath, ArchiveInfo info) {
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(2))),
-
-              ListTile(
-                tileColor: Colors.blueGrey.withValues(alpha: 0.15),
-                leading: const Icon(Icons.radio_button_checked, color: Colors.teal),
-                title: Text(isSelectionMode ? '${targetPaths.length} Items Selected' : 'Select File'),
-                subtitle: Text(p.basename(filePath), style: const TextStyle(fontWeight: FontWeight.bold)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  final set = Set<String>.from(selectedFiles)..add(filePath);
-                  ref.read(selectedFilesProvider.notifier).state = set;
-                },
-              ),
-              const Divider(height: 1),
-
-              if (!isSelectionMode) ...[
-                if (isApk)
-                  ListTile(leading: const Icon(Icons.android, color: Colors.green), title: const Text('Install APK'),
-                    onTap: () { Navigator.pop(ctx); final h = ref.read(fileHandlerRegistryProvider).handlerFor(file); if (h != null) h.open(context, file, ref.read(storageAdapterProvider)); }),
-                if (isArchive) ...[
-                  ListTile(leading: const Icon(Icons.folder_open, color: Colors.blue), title: const Text('Browse Contents'),
-                    onTap: () { Navigator.pop(ctx); Navigator.of(context).push(MaterialPageRoute(builder: (_) => ArchiveBrowserScreen(archivePath: filePath))); }),
-                  ListTile(leading: const Icon(Icons.unarchive, color: Colors.orange), title: const Text('Extract Here'),
-                    onTap: () { Navigator.pop(ctx); _showExtractionProgress(context, ref, filePath, p.dirname(filePath)); }),
-                  ListTile(leading: const Icon(Icons.drive_file_move, color: Colors.teal), title: const Text('Extract To...'),
-                    onTap: () { Navigator.pop(ctx); ref.read(clipboardProvider.notifier).state = ClipboardState(paths: [filePath], action: ClipboardAction.extract); }),
-                ],
-                if (!file.isDirectory && !isApk && !isArchive)
-                  ListTile(leading: const Icon(Icons.open_in_new), title: const Text('Open'),
-                    onTap: () { Navigator.pop(ctx); final h = ref.read(fileHandlerRegistryProvider).handlerFor(file); if (h != null) h.open(context, file, ref.read(storageAdapterProvider)); }),
-
-                ListTile(
-                  leading: const Icon(Icons.drive_file_rename_outline, color: Colors.amber),
-                  title: const Text('Rename'),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final newName = await FileDialogsDebug.showRenameDialog(context, p.basename(filePath));
-                    if (newName != null && newName.isNotEmpty && newName != p.basename(filePath)) {
-                      final newPath = p.join(p.dirname(filePath), newName);
-                      final ok = await FileOperationsService.renameEntity(filePath, newPath);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Renamed to $newName' : 'Rename failed')));
-                        if (ok) { ref.invalidate(directoryContentsProvider); }
-                      }
-                    }
-                  },
-                ),
-              ],
-
-              ListTile(leading: const Icon(Icons.content_copy), title: Text(isSelectionMode ? 'Copy ${targetPaths.length} items' : 'Copy'),
-                onTap: () { Navigator.pop(ctx); ref.read(clipboardProvider.notifier).state = ClipboardState(paths: targetPaths, action: ClipboardAction.copy); ref.read(selectedFilesProvider.notifier).state = {}; }),
-              ListTile(leading: const Icon(Icons.content_cut), title: Text(isSelectionMode ? 'Cut ${targetPaths.length} items' : 'Cut'),
-                onTap: () { Navigator.pop(ctx); ref.read(clipboardProvider.notifier).state = ClipboardState(paths: targetPaths, action: ClipboardAction.cut); ref.read(selectedFilesProvider.notifier).state = {}; }),
-
-              ListTile(
-                leading: const Icon(Icons.folder_zip, color: Colors.teal),
-                title: Text(isSelectionMode ? 'Compress ${targetPaths.length} items' : 'Compress'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final defaultName = targetPaths.length == 1 ? p.basenameWithoutExtension(targetPaths.first) : 'Archive';
-                  final result = await FileDialogsDebug.showCompressDialog(context, defaultName);
-                  if (result != null && result['name']!.isNotEmpty) {
-                    final ext = result['format']!;
-                    final dest = p.join(p.dirname(filePath), '${result['name']}.$ext');
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compressing...')));
-                    await ArchiveService.compressEntities(targetPaths, dest, format: ext.replaceAll('.', ''));
-                    ref.read(selectedFilesProvider.notifier).state = {};
-                    ref.invalidate(directoryContentsProvider);
-                  }
-                },
-              ),
-
-              ListTile(
-                leading: const Icon(Icons.share),
-                title: const Text('Share'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final xFiles = targetPaths.map((path) => XFile(path)).toList();
-                  await Share.shareXFiles(xFiles, text: 'Shared via Argus Archive');
-                  ref.read(selectedFilesProvider.notifier).state = {};
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('Details'),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final entries = await FileActionHandlerDebug.getEntriesFromPaths(targetPaths, ref.read(storageAdapterProvider));
-                  if (context.mounted) { FileDialogsDebug.showDetailsDialog(context, entries); }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.orange),
-                title: Text(isSelectionMode ? 'Move ${targetPaths.length} items to Trash' : 'Move to Trash', style: const TextStyle(color: Colors.orange)),
-                onTap: () { Navigator.pop(ctx); FileDialogsDebug.showDeleteConfirmation(context, ref, targetPaths); },
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AlertDialog(
+        title: Text(p.basename(filePath)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          _row('Format',    info.format),
+          _row('Files',     '${info.fileCount}'),
+          _row('Folders',   '${info.dirCount}'),
+          _row('Original Size', _fmtSize(info.totalUncompressedSize)),
+          _row('Compressed',   _fmtSize(info.compressedSize)),
+          if (info.totalUncompressedSize > 0)
+            _row('Ratio',
+                '${((1 - info.compressedSize / info.totalUncompressedSize) * 100).toStringAsFixed(1)}% saved'),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
       ),
     );
   }
 
+  // ─── utilities ────────────────────────────────────────────────────────────
   static Widget _row(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Text(label, style: const TextStyle(color: Colors.grey)),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+      Text(value,  style: const TextStyle(fontWeight: FontWeight.bold)),
     ]),
   );
 
@@ -282,5 +536,48 @@ class FileBottomSheetsDebug {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+  }
+
+  static String _fmtDate(DateTime dt) =>
+      '${dt.day} ${_months[dt.month - 1]} ${dt.year}';
+
+  static const _months = [
+    'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec',
+  ];
+
+  static IconData _iconFor(FileEntry e) {
+    if (e.isDirectory) return Icons.folder;
+    final ext = p.extension(e.path).toLowerCase();
+    if (['.jpg','.jpeg','.png','.gif','.webp'].contains(ext)) return Icons.image;
+    if (['.mp4','.mkv','.avi','.mov'].contains(ext)) return Icons.movie;
+    if (['.mp3','.wav','.flac'].contains(ext)) return Icons.audiotrack;
+    if (ext == '.pdf') return Icons.picture_as_pdf;
+    if (ext == '.apk') return Icons.android;
+    if (['.zip','.rar','.7z','.tar'].contains(ext)) return Icons.archive;
+    return Icons.insert_drive_file;
+  }
+
+  static Color _colorFor(FileEntry e) {
+    if (e.isDirectory) return Colors.amber;
+    final ext = p.extension(e.path).toLowerCase();
+    if (['.jpg','.jpeg','.png','.gif'].contains(ext)) return Colors.blue;
+    if (['.mp4','.mkv'].contains(ext)) return Colors.indigo;
+    if (ext == '.pdf') return Colors.red;
+    if (ext == '.apk') return Colors.green;
+    if (['.zip','.rar','.7z'].contains(ext)) return Colors.orange;
+    return Colors.tealAccent;
+  }
+
+  // file type badge for the header (derived from FileType enum)
+  static IconData _iconForType(FileType t) {
+    switch (t) {
+      case FileType.image: return Icons.image;
+      case FileType.video: return Icons.movie;
+      case FileType.audio: return Icons.audiotrack;
+      case FileType.document: return Icons.description;
+      case FileType.archive: return Icons.archive;
+      case FileType.dir: return Icons.folder;
+      default: return Icons.insert_drive_file;
+    }
   }
 }
