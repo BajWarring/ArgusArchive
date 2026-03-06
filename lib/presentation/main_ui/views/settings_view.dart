@@ -1,33 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui_theme.dart';
-import '../../debug_ui/providers.dart'; // FIXED IMPORT PATH
 
-class SettingsView extends ConsumerWidget {
+class SettingsView extends StatelessWidget {
   const SettingsView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionHeader('DEVELOPER OPTIONS'),
-        _buildSettingsCard([
-          _buildSettingsRow('Use Legacy Debug UI', trailing: Switch(
-            value: ref.watch(useDebugUiProvider),
-            activeColor: ArgusColors.primary,
-            onChanged: (val) {
-              ref.read(useDebugUiProvider.notifier).state = val;
-            },
-          )),
-        ]),
-        const SizedBox(height: 24),
         _buildSectionHeader('APPEARANCE'),
         _buildSettingsCard([
           _buildSettingsRow('Dark Mode', trailing: Switch(
             value: Theme.of(context).brightness == Brightness.dark,
             activeColor: ArgusColors.primary,
-            onChanged: (val) {},
+            onChanged: (val) {
+               // Add your theme logic here later
+            },
           )),
         ]),
         const SizedBox(height: 24),
@@ -52,9 +41,14 @@ class SettingsView extends ConsumerWidget {
   Widget _buildSettingsCard(List<Widget> rows) {
     return Container(
       decoration: BoxDecoration(
-        color: ArgusColors.surfaceDark.withValues(alpha: 0.4),
+        color: Theme.of(context).brightness == Brightness.dark 
+            ? ArgusColors.surfaceDark.withOpacity(0.4) 
+            : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        boxShadow: Theme.of(context).brightness == Brightness.dark 
+            ? [] 
+            : [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
       ),
       child: Column(children: rows),
     );
