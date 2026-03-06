@@ -79,11 +79,6 @@ class _PdfScreenState extends State<_PdfScreen> {
   int _currentPage = 1;
   int _totalPages  = 0;
 
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -128,6 +123,7 @@ class _PdfScreenState extends State<_PdfScreen> {
             )
           : PdfViewer.data(
               widget.bytes!,
+              sourceName: widget.title,
               controller: _ctrl,
               params: _viewerParams(),
             ),
@@ -137,12 +133,12 @@ class _PdfScreenState extends State<_PdfScreen> {
   PdfViewerParams _viewerParams() {
     return PdfViewerParams(
       backgroundColor: const Color(0xFF303030),
-      onDocumentLoaded: (doc) {
-        setState(() {
-          _totalPages  = doc.pages.length;
-          _currentPage = 1;
-        });
-      },
+      onViewerReady: (document, controller) {
+  setState(() {
+    _totalPages  = document.pages.length;
+    _currentPage = 1;
+  });
+},
       onPageChanged: (page) {
         setState(() => _currentPage = page ?? 1);
       },
