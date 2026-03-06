@@ -47,7 +47,7 @@ dependencies:
   
   # File Handlers (Previewers)
   flutter_svg: ^2.0.10
-  syncfusion_flutter_pdfviewer: ^24.1.41
+  pdfrx: ^1.0.77
   
   # Permissions
   permission_handler: ^11.3.1

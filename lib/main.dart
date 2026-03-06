@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'presentation/splash_ui/root_navigator.dart';
 import 'services/sub_app/shortcut_service.dart';
-import 'services/video_player_app/video_library_screen.dart';
+import 'presentation/subapp_video_ui/video_library_screen.dart';
 
-// Global Key to allow navigation from outside the standard widget tree
 final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
@@ -32,7 +31,6 @@ class _ArgusArchiveAppState extends State<ArgusArchiveApp> {
   }
 
   Future<void> _initShortcuts() async {
-    // 1. Check if the app was launched FROM a shortcut
     final initialRoute = await ShortcutService.getInitialRoute();
     if (initialRoute == '/video_library') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -40,7 +38,6 @@ class _ArgusArchiveAppState extends State<ArgusArchiveApp> {
       });
     }
 
-    // 2. Listen for shortcut taps while the app is already open in the background
     ShortcutService.listenToRouteChanges((route) {
       if (route == '/video_library') {
         navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const VideoLibraryScreen()));

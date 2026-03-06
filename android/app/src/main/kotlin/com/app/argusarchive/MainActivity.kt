@@ -41,7 +41,7 @@ class MainActivity: FlutterActivity() {
                 val dynamicShortcut = ShortcutInfo.Builder(this, "video_library_dynamic")
                     .setShortLabel("Video Player")
                     .setLongLabel("Open Video Player")
-                    .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+                    .setIcon(Icon.createWithResource(this, R.drawable.ic_launcher_video))
                     .setIntent(shortcutIntent)
                     .build()
                 shortcutManager.dynamicShortcuts = listOf(dynamicShortcut)
@@ -84,7 +84,7 @@ class MainActivity: FlutterActivity() {
                             }
                             val pinShortcutInfo = ShortcutInfo.Builder(context, "video_library_pinned")
                                 .setShortLabel("Video Player")
-                                .setIcon(Icon.createWithResource(context, R.mipmap.ic_launcher))
+                                .setIcon(Icon.createWithResource(context, R.drawable.ic_launcher_video))
                                 .setIntent(shortcutIntent)
                                 .build()
                             shortcutManager.requestPinShortcut(pinShortcutInfo, null)
