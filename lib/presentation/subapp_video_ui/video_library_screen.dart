@@ -225,7 +225,7 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen>
                 hintStyle: TextStyle(color: Colors.grey),
                 border: InputBorder.none,
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
               ),
               onChanged: (v) => ref.read(searchQueryProvider.notifier).state = v,
             ),
