@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 
-class MediaTrack {
+// ─── Track Model ──────────────────────────────────────────────────────────────
+class VideoTrack {
   final String id;
   final String language;
   final String label;
@@ -9,102 +10,233 @@ class MediaTrack {
   final int groupIndex;
   final int trackIndex;
 
-  MediaTrack({required this.id, required this.language, required this.label, required this.isSelected, required this.groupIndex, required this.trackIndex});
-  
-  factory MediaTrack.fromMap(Map map) => MediaTrack(
-    id: map['id'], language: map['language'], label: map['label'], 
-    isSelected: map['selected'], groupIndex: map['groupIndex'], trackIndex: map['trackIndex']
-  );
+  const VideoTrack({
+    required this.id,
+    required this.language,
+    required this.label,
+    required this.isSelected,
+    required this.groupIndex,
+    required this.trackIndex,
+  });
+
+  factory VideoTrack.fromMap(Map<dynamic, dynamic> map) => VideoTrack(
+        id: map['id']?.toString() ?? '',
+        language: map['language']?.toString() ?? 'Unknown',
+        label: map['label']?.toString() ?? 'Track',
+        isSelected: map['selected'] as bool? ?? false,
+        groupIndex: map['groupIndex'] as int? ?? 0,
+        trackIndex: map['trackIndex'] as int? ?? 0,
+      );
+
+  VideoTrack copyWith({bool? isSelected}) => VideoTrack(
+        id: id,
+        language: language,
+        label: label,
+        isSelected: isSelected ?? this.isSelected,
+        groupIndex: groupIndex,
+        trackIndex: trackIndex,
+      );
 }
 
+// ─── Playback State ───────────────────────────────────────────────────────────
 class VideoPlaybackState {
-  final String status; // idle, buffering, ready, ended
   final Duration position;
   final Duration duration;
   final Duration buffered;
   final bool isPlaying;
-  final List<MediaTrack> audioTracks;
-  final List<MediaTrack> subtitleTracks;
-  final String? error;
+  final String status; // idle | buffering | ready | ended | error
+  final List<VideoTrack> audioTracks;
+  final List<VideoTrack> subtitleTracks;
+  final String? errorMessage;
 
-  VideoPlaybackState({
-    this.status = 'idle', this.position = Duration.zero, this.duration = Duration.zero, 
-    this.buffered = Duration.zero, this.isPlaying = false, 
-    this.audioTracks = const [], this.subtitleTracks = const [], this.error,
+  const VideoPlaybackState({
+    this.position = Duration.zero,
+    this.duration = Duration.zero,
+    this.buffered = Duration.zero,
+    this.isPlaying = false,
+    this.status = 'idle',
+    this.audioTracks = const [],
+    this.subtitleTracks = const [],
+    this.errorMessage,
   });
 
+  bool get isBuffering => status == 'buffering';
+  bool get isEnded => status == 'ended';
+  bool get hasError => status == 'error';
+
+  double get progress {
+    final total = duration.inMilliseconds;
+    if (total <= 0) return 0.0;
+    return (position.inMilliseconds / total).clamp(0.0, 1.0);
+  }
+
   VideoPlaybackState copyWith({
-    String? status, Duration? position, Duration? duration, Duration? buffered, 
-    bool? isPlaying, List<MediaTrack>? audioTracks, List<MediaTrack>? subtitleTracks, String? error
+    Duration? position,
+    Duration? duration,
+    Duration? buffered,
+    bool? isPlaying,
+    String? status,
+    List<VideoTrack>? audioTracks,
+    List<VideoTrack>? subtitleTracks,
+    String? errorMessage,
   }) {
     return VideoPlaybackState(
-      status: status ?? this.status, position: position ?? this.position,
-      duration: duration ?? this.duration, buffered: buffered ?? this.buffered,
-      isPlaying: isPlaying ?? this.isPlaying, audioTracks: audioTracks ?? this.audioTracks,
-      subtitleTracks: subtitleTracks ?? this.subtitleTracks, error: error ?? this.error
+      position: position ?? this.position,
+      duration: duration ?? this.duration,
+      buffered: buffered ?? this.buffered,
+      isPlaying: isPlaying ?? this.isPlaying,
+      status: status ?? this.status,
+      audioTracks: audioTracks ?? this.audioTracks,
+      subtitleTracks: subtitleTracks ?? this.subtitleTracks,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }
 
+// ─── Controller ───────────────────────────────────────────────────────────────
 class VideoPlayerController {
   final int viewId;
-  late final MethodChannel _methodChannel;
-  late final EventChannel _eventChannel;
-  
+
+  late final MethodChannel _method;
+  late final EventChannel _events;
+
+  VideoPlaybackState _state = const VideoPlaybackState();
+  VideoPlaybackState get value => _state;
+
   final _stateController = StreamController<VideoPlaybackState>.broadcast();
   Stream<VideoPlaybackState> get stateStream => _stateController.stream;
 
-  VideoPlaybackState _state = VideoPlaybackState();
-  VideoPlaybackState get value => _state;
+  StreamSubscription? _eventSub;
 
   VideoPlayerController(this.viewId) {
-    _methodChannel = MethodChannel('com.app.argusarchive/video_player_$viewId');
-    _eventChannel = EventChannel('com.app.argusarchive/video_events_$viewId');
-    
-    _eventChannel.receiveBroadcastStream().listen((event) {
-      final map = Map<String, dynamic>.from(event);
-      switch (map['event']) {
-        case 'progress':
-          _state = _state.copyWith(
-            position: Duration(milliseconds: map['position']),
-            duration: Duration(milliseconds: map['duration']),
-            buffered: Duration(milliseconds: map['buffered']),
-          );
-          break;
-        case 'state': _state = _state.copyWith(status: map['state']); break;
-        case 'isPlaying': _state = _state.copyWith(isPlaying: map['isPlaying']); break;
-        case 'tracks':
-          _state = _state.copyWith(
-            audioTracks: (map['audio'] as List).map((e) => MediaTrack.fromMap(e)).toList(),
-            subtitleTracks: (map['subs'] as List).map((e) => MediaTrack.fromMap(e)).toList(),
-          );
-          break;
-        case 'error': _state = _state.copyWith(error: map['message']); break;
-      }
-      _stateController.add(_state);
-    });
+    _method = MethodChannel('com.app.argusarchive/video_player_$viewId');
+    _events = EventChannel('com.app.argusarchive/video_events_$viewId');
+    _listenToNativeEvents();
   }
 
-  // Triggers instant live seeking for frame-preview during drag
-  Future<void> liveSeekTo(Duration pos) => _methodChannel.invokeMethod('seekTo', {'position': pos.inMilliseconds});
-  
-  // Subtitle synchronization (Delay)
-  Future<void> setSubtitleDelay(int delayMs) => _methodChannel.invokeMethod('setSubtitleDelay', {'delayMs': delayMs});
+  void _listenToNativeEvents() {
+    _eventSub = _events.receiveBroadcastStream().listen(
+      (dynamic raw) {
+        if (raw == null || _stateController.isClosed) return;
+        final map = Map<String, dynamic>.from(raw as Map);
 
- 
-  Future<void> setAspectRatio(int mode) => _methodChannel.invokeMethod('setAspectRatio', {'mode': mode});
-  Future<void> play() => _methodChannel.invokeMethod('play');
-  Future<void> pause() => _methodChannel.invokeMethod('pause');
-  Future<void> seekTo(Duration pos) => _methodChannel.invokeMethod('seekTo', {'position': pos.inMilliseconds});
-  Future<void> setSpeed(double speed) => _methodChannel.invokeMethod('setSpeed', {'speed': speed});
-  Future<void> enterPiP() => _methodChannel.invokeMethod('enterPiP');
-  Future<void> setBrightness(double b) => _methodChannel.invokeMethod('setBrightness', {'brightness': b});
-  Future<void> setVolume(double v) => _methodChannel.invokeMethod('setVolume', {'volume': v});
-  
-  Future<void> selectTrack(MediaTrack track, bool isAudio) {
-    return _methodChannel.invokeMethod('selectTrack', {'groupIndex': track.groupIndex, 'trackIndex': track.trackIndex, 'isAudio': isAudio});
+        switch (map['event'] as String?) {
+          case 'progress':
+            final rawDur = map['duration'] as int? ?? -1;
+            final validDur = rawDur > 0 ? Duration(milliseconds: rawDur) : _state.duration;
+            _state = _state.copyWith(
+              position: Duration(milliseconds: map['position'] as int? ?? 0),
+              duration: validDur,
+              buffered: Duration(milliseconds: map['buffered'] as int? ?? 0),
+            );
+            break;
+
+          case 'state':
+            _state = _state.copyWith(status: map['state'] as String? ?? 'idle');
+            break;
+
+          case 'isPlaying':
+            _state = _state.copyWith(isPlaying: map['isPlaying'] as bool? ?? false);
+            break;
+
+          case 'tracks':
+            final audioRaw = (map['audio'] as List?) ?? [];
+            final subRaw = (map['subs'] as List?) ?? [];
+            _state = _state.copyWith(
+              audioTracks: audioRaw.map((t) => VideoTrack.fromMap(t as Map)).toList(),
+              subtitleTracks: subRaw.map((t) => VideoTrack.fromMap(t as Map)).toList(),
+            );
+            break;
+
+          case 'error':
+            _state = _state.copyWith(
+              status: 'error',
+              errorMessage: map['message'] as String?,
+            );
+            break;
+        }
+
+        if (!_stateController.isClosed) _stateController.add(_state);
+      },
+      onError: (_) {},
+    );
   }
-  Future<void> disableSubtitles() => _methodChannel.invokeMethod('disableSubtitles');
 
-  void dispose() { _stateController.close(); }
+  // ─── Playback Controls ────────────────────────────────────────────────────
+  Future<void> play() async {
+    try { await _method.invokeMethod('play'); } catch (_) {}
+  }
+
+  Future<void> pause() async {
+    try { await _method.invokeMethod('pause'); } catch (_) {}
+  }
+
+  Future<void> togglePlayPause() async {
+    _state.isPlaying ? await pause() : await play();
+  }
+
+  Future<void> seekTo(Duration position) async {
+    try {
+      await _method.invokeMethod('seekTo', {'position': position.inMilliseconds});
+    } catch (_) {}
+  }
+
+  Future<void> seekBy(Duration delta) async {
+    final target = _state.position + delta;
+    final clamped = Duration(
+      milliseconds: target.inMilliseconds.clamp(0, _state.duration.inMilliseconds),
+    );
+    await seekTo(clamped);
+  }
+
+  // ─── A/V Controls ─────────────────────────────────────────────────────────
+  Future<void> setSpeed(double speed) async {
+    try { await _method.invokeMethod('setSpeed', {'speed': speed}); } catch (_) {}
+  }
+
+  Future<void> setVolume(double volume) async {
+    try {
+      await _method.invokeMethod('setVolume', {'volume': volume.clamp(0.0, 1.0)});
+    } catch (_) {}
+  }
+
+  Future<void> setBrightness(double brightness) async {
+    try {
+      await _method.invokeMethod('setBrightness', {'brightness': brightness.clamp(0.0, 1.0)});
+    } catch (_) {}
+  }
+
+  // ─── Track Selection ──────────────────────────────────────────────────────
+  Future<void> selectTrack(VideoTrack track, bool isAudio) async {
+    try {
+      await _method.invokeMethod('selectTrack', {
+        'groupIndex': track.groupIndex,
+        'trackIndex': track.trackIndex,
+        'isAudio': isAudio,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> disableSubtitles() async {
+    try { await _method.invokeMethod('disableSubtitles'); } catch (_) {}
+  }
+
+  Future<void> setSubtitleDelay(int delayMs) async {
+    try { await _method.invokeMethod('setSubtitleDelay', {'delayMs': delayMs}); } catch (_) {}
+  }
+
+  // ─── Display Controls ─────────────────────────────────────────────────────
+  Future<void> setAspectRatio(int mode) async {
+    try { await _method.invokeMethod('setAspectRatio', {'mode': mode}); } catch (_) {}
+  }
+
+  Future<void> enterPiP() async {
+    try { await _method.invokeMethod('enterPiP'); } catch (_) {}
+  }
+
+  // ─── Lifecycle ────────────────────────────────────────────────────────────
+  void dispose() {
+    _eventSub?.cancel();
+    if (!_stateController.isClosed) _stateController.close();
+  }
 }
