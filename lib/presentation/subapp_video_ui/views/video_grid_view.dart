@@ -47,7 +47,7 @@ class VideoGridView extends ConsumerWidget {
             final videos = snap.data ?? [];
 
             if (videos.isEmpty) {
-              return _EmptyState(message: 'No videos in index yet.\nRebuild the search index from ⋮ menu.');
+              return const _EmptyState(message: 'No videos in index yet.\nRebuild the search index from ⋮ menu.');
             }
 
             return CustomScrollView(
@@ -145,10 +145,17 @@ class _VideoToolbar extends StatelessWidget {
           // Sort popup
           PopupMenuButton<VideoSortBy>(
             tooltip: 'Sort',
+            onSelected: onSort,
+            itemBuilder: (_) => [
+              _sortItem(VideoSortBy.dateDesc, 'Newest First', sortBy),
+              _sortItem(VideoSortBy.dateAsc, 'Oldest First', sortBy),
+              _sortItem(VideoSortBy.name, 'By Name', sortBy),
+              _sortItem(VideoSortBy.size, 'By Size', sortBy),
+            ],
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white10 : Colors.black08,
+                color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -161,13 +168,6 @@ class _VideoToolbar extends StatelessWidget {
                 ],
               ),
             ),
-            onSelected: onSort,
-            itemBuilder: (_) => [
-              _sortItem(VideoSortBy.dateDesc, 'Newest First', sortBy),
-              _sortItem(VideoSortBy.dateAsc, 'Oldest First', sortBy),
-              _sortItem(VideoSortBy.name, 'By Name', sortBy),
-              _sortItem(VideoSortBy.size, 'By Size', sortBy),
-            ],
           ),
           const SizedBox(width: 4),
           // View mode toggle
@@ -490,9 +490,4 @@ String _fmtDate(DateTime dt) {
   if (diff.inDays < 7) return '${diff.inDays}d ago';
   if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
   return '${dt.day}/${dt.month}/${dt.year}';
-}
-
-// Needed for opacity workaround
-extension on double {
-  double get clamp01 => clamp(0.0, 1.0);
 }

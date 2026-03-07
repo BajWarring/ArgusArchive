@@ -11,7 +11,7 @@ class VideoBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       height: 80,
       decoration: BoxDecoration(
@@ -21,7 +21,7 @@ class VideoBottomNav extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildNavItem(context, 'Video', Icons.play_circle, VideoTab.video),
+          _buildNavItem(context, 'Video', Icons.play_circle, VideoTab.videos),
           _buildNavItem(context, 'Browse', Icons.folder_copy, VideoTab.browse),
         ],
       ),
@@ -53,7 +53,7 @@ class VideoBottomNav extends StatelessWidget {
               fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
               color: isActive ? ArgusColors.primary : Colors.grey,
             ),
-          )
+          ),
         ],
       ),
     );

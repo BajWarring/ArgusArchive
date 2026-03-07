@@ -8,6 +8,7 @@ import 'views/browse_view.dart';
 import 'views/explorer_view.dart';
 import 'views/video_settings_view.dart';
 import '../../core/enums/file_type.dart';
+import '../../core/models/file_entry.dart';
 import '../debug_ui/search_providers.dart';
 import '../debug_ui/providers.dart';
 import '../../services/operations/video_thumbnail_service.dart';
@@ -219,9 +220,9 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen>
               controller: _searchCtrl,
               focusNode: _searchFocus,
               style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'Search videos…',
-                hintStyle: const TextStyle(color: Colors.grey),
+                hintStyle: TextStyle(color: Colors.grey),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -327,7 +328,7 @@ class _BottomNav extends StatelessWidget {
         color: (isDark ? ArgusColors.surfaceDark : Colors.white).withValues(alpha: 0.96),
         border: Border(
           top: BorderSide(
-            color: isDark ? Colors.white10 : Colors.black08,
+            color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
           ),
         ),
         boxShadow: [

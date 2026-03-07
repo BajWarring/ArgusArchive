@@ -91,7 +91,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   // Speed
   double _speed = 1.0;
-  static const _speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
 
   // Aspect ratio
   int _aspectMode = 0;
@@ -237,8 +236,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final dy = d.globalPosition.dy - _dragStart.dy;
 
     if (_axis == _GestureAxis.none) {
-      if (dx.abs() > 18) _axis = _GestureAxis.horizontal;
-      else if (dy.abs() > 18) _axis = _GestureAxis.vertical;
+      if (dx.abs() > 18) { _axis = _GestureAxis.horizontal; }
+      else if (dy.abs() > 18) { _axis = _GestureAxis.vertical; }
     }
 
     if (_axis == _GestureAxis.horizontal) {
@@ -315,7 +314,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           setState(() => _speed = s);
           _ctrl?.setSpeed(s);
           Navigator.pop(context);
-          _showFeedbackOverlay(text: '${s}×', icon: Icons.speed);
+          _showFeedbackOverlay(text: '${s}x', icon: Icons.speed);
         },
       ),
     ).then((_) => _scheduleHide());
@@ -810,7 +809,7 @@ class _TopBar extends StatelessWidget {
                 ),
               ),
               child: Text(
-                '${speed}×',
+                '${speed}x',
                 style: TextStyle(
                   color: speed != 1.0 ? _kOrange : Colors.white,
                   fontSize: 13,
@@ -1055,9 +1054,9 @@ class _LockButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(32),
           border: Border.all(color: Colors.white24),
         ),
-        child: Column(
+        child: const Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
+          children: [
             Icon(Icons.lock, color: Colors.white, size: 28),
             SizedBox(height: 4),
             Text('Tap to\nunlock', textAlign: TextAlign.center,
@@ -1108,7 +1107,7 @@ class _SpeedSheet extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      '${s}×',
+                      '${s}x',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: selected ? Colors.white : Colors.white70,
