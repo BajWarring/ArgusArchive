@@ -5,7 +5,6 @@ import '../../core/enums/file_type.dart';
 import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../providers/video_history_provider.dart';
-import '../../features/file_handlers/file_handler_registry.dart'; 
 import '../../presentation/debug_ui/file_thumbnail_debug.dart'; 
 
 class VideoLibraryScreen extends ConsumerWidget {
