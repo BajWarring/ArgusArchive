@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:media_kit/media_kit.dart';
 import 'presentation/splash_ui/root_navigator.dart';
 import 'services/sub_app/shortcut_service.dart';
-// FIXED: Points to the new folder!
 import 'services/video_player_app/video_library_screen.dart'; 
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
+  // Removed the broken MediaKit initialization
   runApp(
     const ProviderScope(
       child: ArgusArchiveApp(),
