@@ -1,38 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import '../../core/enums/file_type.dart';
+import '../../core/models/file_entry.dart';
+import '../../presentation/debug_ui/providers.dart';
+import '../../presentation/debug_ui/search_providers.dart';
 
-class VideoLibraryScreen extends StatefulWidget {
+class VideoLibraryScreen extends ConsumerStatefulWidget {
   const VideoLibraryScreen({super.key});
   @override
-  State<VideoLibraryScreen> createState() => _VideoLibraryScreenState();
+  ConsumerState<VideoLibraryScreen> createState() => _VideoLibraryScreenState();
 }
 
-class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTickerProviderStateMixin {
+class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final List<Map<String, dynamic>> _folders = [
-    {'name': '1DM', 'count': 1},
-    {'name': 'All Pictures', 'count': 4},
-    {'name': 'All Videos', 'count': 94},
-    {'name': 'Camera', 'count': 43},
-    {'name': 'Download', 'count': 3},
-    {'name': 'ScreenRecorder', 'count': 2},
-    {'name': 'VN', 'count': 1},
-    {'name': 'Wallpapers', 'count': 2},
-    {'name': 'WhatsApp Video', 'count': 6},
-  ];
-  final List<Map<String, dynamic>> _videos = [
-    {'title': 'VID_20260308_1011.mp4', 'duration': '14:20', 'size': '156 MB', 'date': '08 Mar', 'folder': 'Camera'},
-    {'title': 'Tears_of_Steel_1080p.mkv', 'duration': '12:14', 'size': '450 MB', 'date': '07 Mar', 'folder': 'Download'},
-    {'title': 'Screen_Recording_2026.mp4', 'duration': '02:45', 'size': '24 MB', 'date': '05 Mar', 'folder': 'ScreenRecorder'},
-    {'title': 'WhatsApp_Video_1.mp4', 'duration': '00:30', 'size': '5 MB', 'date': '02 Mar', 'folder': 'WhatsApp Video'},
-    {'title': 'Big_Buck_Bunny.mp4', 'duration': '09:56', 'size': '210 MB', 'date': '01 Mar', 'folder': 'Download'},
-    {'title': 'Elephants_Dream.mp4', 'duration': '10:54', 'size': '320 MB', 'date': '28 Feb', 'folder': 'Download'},
-  ];
-  final List<Map<String, dynamic>> _playlists = [
-    {'name': 'Favorites', 'count': 12, 'icon': Icons.favorite_border},
-    {'name': 'Recently Played', 'count': 25, 'icon': Icons.history},
-    {'name': 'Watch Later', 'count': 5, 'icon': Icons.watch_later_outlined},
-    {'name': 'My Edits', 'count': 3, 'icon': Icons.video_collection_outlined},
-  ];
 
   @override
   void initState() {
@@ -46,11 +27,23 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
     super.dispose();
   }
 
+  // Helper to fetch all videos from indexer
+  Future<List<FileEntry>> _fetchVideos() async {
+    final db = await ref.read(searchDatabaseProvider.future);
+    final results = await db.search(query: '', filterType: FileType.video);
+    // Add manual extension fallback for safety
+    final allFiles = await db.search(query: '');
+    final fallback = allFiles.where((f) => 
+      f.type == FileType.video || ['mp4','mkv','webm','avi'].contains(p.extension(f.path).toLowerCase().replaceAll('.',''))
+    ).toList();
+    return fallback.toSet().toList(); // Ensure unique
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Folders', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
+        title: const Text('Video Library', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
         actions: [
           IconButton(icon: const Icon(Icons.search, color: Color(0xFF4A4A4A)), onPressed: () {}),
           IconButton(icon: const Icon(Icons.dashboard_customize_outlined, color: Color(0xFF4A4A4A)), onPressed: () {}),
@@ -68,23 +61,56 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
           tabs: const [Tab(text: 'FOLDERS'), Tab(text: 'VIDEOS'), Tab(text: 'PLAYLISTS')],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [_buildFoldersList(), _buildVideosList(), _buildPlaylists()],
+      body: FutureBuilder<List<FileEntry>>(
+        future: _fetchVideos(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
+          }
+          final videos = snapshot.data ?? [];
+          
+          return TabBarView(
+            controller: _tabController,
+            children: [
+              _buildFoldersList(videos), 
+              _buildVideosList(videos), 
+              _buildPlaylists()
+            ],
+          );
+        }
       ),
     );
   }
 
-  Widget _buildFoldersList() {
+  Widget _buildFoldersList(List<FileEntry> videos) {
+    // 1. Group videos by their parent folder path
+    final Map<String, List<FileEntry>> groupedFolders = {};
+    for (var video in videos) {
+      final dir = p.dirname(video.path);
+      groupedFolders.putIfAbsent(dir, () => []).add(video);
+    }
+
+    final folderPaths = groupedFolders.keys.toList()..sort((a,b) => p.basename(a).compareTo(p.basename(b)));
+
+    if (folderPaths.isEmpty) {
+      return const Center(child: Text('No video folders found.', style: TextStyle(color: Colors.grey)));
+    }
+
     return ListView.builder(
-      itemCount: _folders.length,
+      itemCount: folderPaths.length,
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemBuilder: (context, index) {
-        final folder = _folders[index];
+        final path = folderPaths[index];
+        final folderVideos = groupedFolders[path]!;
+        final folderName = p.basename(path);
         final isFirst = index == 0; 
         
         return InkWell(
-          onTap: () {},
+          onTap: () {
+            // Update global path and navigate back to main file browser to view folder
+            ref.read(currentPathProvider.notifier).state = path;
+            Navigator.pop(context); 
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             child: Row(
@@ -103,7 +129,8 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
                             borderRadius: BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
                           ),
                         ),
-                      )
+                      ),
+                      const Center(child: Icon(Icons.folder, color: Color(0xFFB0B0B0))),
                     ],
                   ),
                 ),
@@ -112,9 +139,9 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(folder['name'], style: TextStyle(fontSize: 16, color: isFirst ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontWeight: isFirst ? FontWeight.bold : FontWeight.w500)),
+                      Text(folderName, style: TextStyle(fontSize: 16, color: isFirst ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontWeight: isFirst ? FontWeight.bold : FontWeight.w500)),
                       const SizedBox(height: 4),
-                      Text('${folder['count']} video${folder['count'] > 1 ? 's' : ''}', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
+                      Text('${folderVideos.length} video${folderVideos.length > 1 ? 's' : ''}', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
                     ],
                   ),
                 ),
@@ -126,14 +153,25 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
     );
   }
 
-  Widget _buildVideosList() {
+  Widget _buildVideosList(List<FileEntry> videos) {
+    if (videos.isEmpty) {
+      return const Center(child: Text('No videos found.', style: TextStyle(color: Colors.grey)));
+    }
+
     return ListView.builder(
-      itemCount: _videos.length,
+      itemCount: videos.length,
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemBuilder: (context, index) {
-        final video = _videos[index];
+        final video = videos[index];
+        final sizeMb = (video.size / 1024 / 1024).toStringAsFixed(1);
+        final date = '${video.modifiedAt.day}/${video.modifiedAt.month}/${video.modifiedAt.year}';
+        
         return InkWell(
-          onTap: () {},
+          onTap: () {
+            final registry = ref.read(fileHandlerRegistryProvider);
+            final adapter = ref.read(storageAdapterProvider);
+            registry.handlerFor(video)?.open(context, video, adapter);
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
             child: Row(
@@ -141,36 +179,24 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
                 Container(
                   width: 110, height: 70,
                   decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(6)),
-                  child: Stack(
-                    children: [
-                      const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 32)),
-                      Positioned(
-                        bottom: 4, right: 4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(4)),
-                          child: Text(video['duration'], style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                        ),
-                      )
-                    ],
-                  ),
+                  child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 32)),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(video['title'], style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A1A), fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(p.basename(video.path), style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A1A), fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
                       Row(
                         children: [
                           const Icon(Icons.folder_outlined, size: 14, color: Color(0xFF8E8E8E)),
                           const SizedBox(width: 4),
-                          Expanded(child: Text(video['folder'], style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E)), overflow: TextOverflow.ellipsis)),
+                          Expanded(child: Text(p.basename(p.dirname(video.path)), style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E)), overflow: TextOverflow.ellipsis)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('${video['size']}  •  ${video['date']}', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E))),
+                      Text('$sizeMb MB  •  $date', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E))),
                     ],
                   ),
                 ),
@@ -184,8 +210,14 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
   }
 
   Widget _buildPlaylists() {
+    // Playlists remain mock since the app backend doesn't have a playlist manager yet
+    final playlists = [
+      {'name': 'Favorites', 'count': 0, 'icon': Icons.favorite_border},
+      {'name': 'Watch Later', 'count': 0, 'icon': Icons.watch_later_outlined},
+    ];
+
     return ListView.builder(
-      itemCount: _playlists.length + 1, 
+      itemCount: playlists.length + 1, 
       padding: const EdgeInsets.symmetric(vertical: 16),
       itemBuilder: (context, index) {
         if (index == 0) {
@@ -196,7 +228,7 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0), style: BorderStyle.solid), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(8)),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -209,15 +241,15 @@ class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTick
             ),
           );
         }
-        final playlist = _playlists[index - 1];
+        final playlist = playlists[index - 1];
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           leading: Container(
             width: 50, height: 50,
             decoration: BoxDecoration(color: const Color(0xFFFFF0E6), borderRadius: BorderRadius.circular(8)),
-            child: Icon(playlist['icon'], color: const Color(0xFFFF5E00), size: 28),
+            child: Icon(playlist['icon'] as IconData, color: const Color(0xFFFF5E00), size: 28),
           ),
-          title: Text(playlist['name'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
+          title: Text(playlist['name'] as String, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
           subtitle: Text('${playlist['count']} videos', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
           trailing: IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF8E8E8E)), onPressed: (){}),
           onTap: () {},
