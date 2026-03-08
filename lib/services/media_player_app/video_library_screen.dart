@@ -1,192 +1,228 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import '../../core/enums/file_type.dart';
-import '../../core/models/file_entry.dart';
-import '../../presentation/debug_ui/providers.dart';
-import '../../providers/video_history_provider.dart';
-import '../../presentation/debug_ui/file_thumbnail_debug.dart'; 
 
-class VideoLibraryScreen extends ConsumerWidget {
+class VideoLibraryScreen extends StatefulWidget {
   const VideoLibraryScreen({super.key});
+  @override
+  State<VideoLibraryScreen> createState() => _VideoLibraryScreenState();
+}
+
+class _VideoLibraryScreenState extends State<VideoLibraryScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final List<Map<String, dynamic>> _folders = [
+    {'name': '1DM', 'count': 1},
+    {'name': 'All Pictures', 'count': 4},
+    {'name': 'All Videos', 'count': 94},
+    {'name': 'Camera', 'count': 43},
+    {'name': 'Download', 'count': 3},
+    {'name': 'ScreenRecorder', 'count': 2},
+    {'name': 'VN', 'count': 1},
+    {'name': 'Wallpapers', 'count': 2},
+    {'name': 'WhatsApp Video', 'count': 6},
+  ];
+  final List<Map<String, dynamic>> _videos = [
+    {'title': 'VID_20260308_1011.mp4', 'duration': '14:20', 'size': '156 MB', 'date': '08 Mar', 'folder': 'Camera'},
+    {'title': 'Tears_of_Steel_1080p.mkv', 'duration': '12:14', 'size': '450 MB', 'date': '07 Mar', 'folder': 'Download'},
+    {'title': 'Screen_Recording_2026.mp4', 'duration': '02:45', 'size': '24 MB', 'date': '05 Mar', 'folder': 'ScreenRecorder'},
+    {'title': 'WhatsApp_Video_1.mp4', 'duration': '00:30', 'size': '5 MB', 'date': '02 Mar', 'folder': 'WhatsApp Video'},
+    {'title': 'Big_Buck_Bunny.mp4', 'duration': '09:56', 'size': '210 MB', 'date': '01 Mar', 'folder': 'Download'},
+    {'title': 'Elephants_Dream.mp4', 'duration': '10:54', 'size': '320 MB', 'date': '28 Feb', 'folder': 'Download'},
+  ];
+  final List<Map<String, dynamic>> _playlists = [
+    {'name': 'Favorites', 'count': 12, 'icon': Icons.favorite_border},
+    {'name': 'Recently Played', 'count': 25, 'icon': Icons.history},
+    {'name': 'Watch Later', 'count': 5, 'icon': Icons.watch_later_outlined},
+    {'name': 'My Edits', 'count': 3, 'icon': Icons.video_collection_outlined},
+  ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final currentPath = ref.watch(currentPathProvider);
-    final asyncFiles = ref.watch(directoryContentsProvider);
-    final history = ref.watch(videoHistoryProvider);
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
 
-    final canGoBack = currentPath != '/storage/emulated/0' && currentPath != '/';
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
-    return PopScope(
-      canPop: !canGoBack,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) ref.read(currentPathProvider.notifier).state = p.dirname(currentPath);
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        appBar: AppBar(
-          title: const Text('Video Library', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: const Color(0xFF1E1E1E),
-          elevation: 0,
-        ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. History Section
-            if (history.isNotEmpty) ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text('RECENTLY PLAYED', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal, letterSpacing: 1.2)),
-              ),
-              SizedBox(
-                height: 140,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: history.length,
-                  itemBuilder: (context, index) {
-                    final item = history[index];
-                    final progress = item.durationMs > 0 ? (item.positionMs / item.durationMs) : 0.0;
-                    
-                    return GestureDetector(
-                      onTap: () {
-                        final registry = ref.read(fileHandlerRegistryProvider);
-                        final adapter = ref.read(storageAdapterProvider);
-                        final entry = FileEntry(
-                          id: item.path,
-                          path: item.path,
-                          type: FileType.video,
-                          size: 0,
-                          modifiedAt: item.lastPlayed,
-                        );
-                        registry.handlerFor(entry)?.open(context, entry, adapter);
-                      },
-                      child: Container(
-                        width: 160,
-                        margin: const EdgeInsets.only(right: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E1E1E),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
-                                    child: FileThumbnailDebug(
-                                      file: FileEntry(id: item.path, path: item.path, type: FileType.video, size: 0, modifiedAt: DateTime.now()),
-                                      adapter: ref.read(storageAdapterProvider),
-                                      isDirectory: false,
-                                    ),
-                                  ),
-                                  const Center(child: Icon(Icons.play_circle_fill, size: 40, color: Colors.teal)),
-                                ],
-                              ),
-                            ),
-                            LinearProgressIndicator(value: progress, backgroundColor: Colors.black, color: Colors.teal),
-                            Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const Divider(color: Colors.white10, height: 24),
-            ],
-
-            // 2. Navigation Header (Debug UI Style)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: const Color(0xFF1E1E1E),
-              child: Row(
-                children: [
-                  if (canGoBack)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => ref.read(currentPathProvider.notifier).state = p.dirname(currentPath),
-                    ),
-                  Expanded(
-                    child: Text(currentPath, style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                ],
-              ),
-            ),
-
-            // 3. Filtered File List
-            Expanded(
-              child: asyncFiles.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, s) => Center(child: Text('Error: $e')),
-                data: (files) {
-                  // FILTER: Only show directories OR video files
-                  final filtered = files.where((f) {
-                     if (f.isDirectory) return true;
-                     return f.type == FileType.video || ['mp4','mkv','avi','webm'].contains(p.extension(f.path).toLowerCase().replaceAll('.',''));
-                  }).toList();
-
-                  if (filtered.isEmpty) {
-                    return const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.videocam_off, size: 64, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text('No videos found here.', style: TextStyle(color: Colors.grey)),
-                        ],
-                      )
-                    );
-                  }
-
-                  return ListView.builder(
-                    itemCount: canGoBack ? filtered.length + 1 : filtered.length,
-                    itemBuilder: (context, index) {
-                      if (canGoBack && index == 0) {
-                        return ListTile(
-                          leading: const CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.drive_folder_upload, color: Colors.blueGrey)),
-                          title: const Text('..'),
-                          subtitle: const Text('Parent folder', style: TextStyle(fontSize: 11)),
-                          onTap: () => ref.read(currentPathProvider.notifier).state = p.dirname(currentPath),
-                        );
-                      }
-
-                      final file = filtered[canGoBack ? index - 1 : index];
-                      final isFolder = file.isDirectory;
-
-                      return ListTile(
-                        leading: SizedBox(
-                           width: 40, height: 40,
-                           child: FileThumbnailDebug(file: file, adapter: ref.read(storageAdapterProvider), isDirectory: isFolder)
-                        ),
-                        title: Text(p.basename(file.path), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: isFolder ? const Text('Folder') : Text('${(file.size / 1024 / 1024).toStringAsFixed(1)} MB'),
-                        onTap: () {
-                          if (isFolder) {
-                            ref.read(currentPathProvider.notifier).state = file.path;
-                          } else {
-                            final registry = ref.read(fileHandlerRegistryProvider);
-                            final adapter = ref.read(storageAdapterProvider);
-                            registry.handlerFor(file)?.open(context, file, adapter);
-                          }
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Folders', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
+        actions: [
+          IconButton(icon: const Icon(Icons.search, color: Color(0xFF4A4A4A)), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.dashboard_customize_outlined, color: Color(0xFF4A4A4A)), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.person_outline, color: Color(0xFF4A4A4A)), onPressed: () {}),
+          const SizedBox(width: 8),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: const Color(0xFFFF5E00),
+          unselectedLabelColor: const Color(0xFF6B6B6B),
+          indicatorColor: const Color(0xFFFF5E00),
+          indicatorWeight: 3,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13, letterSpacing: 1.2),
+          tabs: const [Tab(text: 'FOLDERS'), Tab(text: 'VIDEOS'), Tab(text: 'PLAYLISTS')],
         ),
       ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [_buildFoldersList(), _buildVideosList(), _buildPlaylists()],
+      ),
+    );
+  }
+
+  Widget _buildFoldersList() {
+    return ListView.builder(
+      itemCount: _folders.length,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemBuilder: (context, index) {
+        final folder = _folders[index];
+        final isFirst = index == 0; 
+        
+        return InkWell(
+          onTap: () {},
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Row(
+              children: [
+                Container(
+                  width: 65, height: 50,
+                  decoration: BoxDecoration(color: const Color(0xFFE5E5E5), borderRadius: BorderRadius.circular(8)),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: 0, left: 0,
+                        child: Container(
+                          width: 25, height: 10,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFE5E5E5),
+                            borderRadius: BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(folder['name'], style: TextStyle(fontSize: 16, color: isFirst ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontWeight: isFirst ? FontWeight.bold : FontWeight.w500)),
+                      const SizedBox(height: 4),
+                      Text('${folder['count']} video${folder['count'] > 1 ? 's' : ''}', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVideosList() {
+    return ListView.builder(
+      itemCount: _videos.length,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemBuilder: (context, index) {
+        final video = _videos[index];
+        return InkWell(
+          onTap: () {},
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+            child: Row(
+              children: [
+                Container(
+                  width: 110, height: 70,
+                  decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(6)),
+                  child: Stack(
+                    children: [
+                      const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 32)),
+                      Positioned(
+                        bottom: 4, right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(4)),
+                          child: Text(video['duration'], style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(video['title'], style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A1A), fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.folder_outlined, size: 14, color: Color(0xFF8E8E8E)),
+                          const SizedBox(width: 4),
+                          Expanded(child: Text(video['folder'], style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E)), overflow: TextOverflow.ellipsis)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text('${video['size']}  •  ${video['date']}', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E))),
+                    ],
+                  ),
+                ),
+                IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF8E8E8E)), onPressed: (){}),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPlaylists() {
+    return ListView.builder(
+      itemCount: _playlists.length + 1, 
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
+            child: InkWell(
+              onTap: () {},
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0), style: BorderStyle.solid), borderRadius: BorderRadius.circular(8)),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add, color: Color(0xFFFF5E00)),
+                    SizedBox(width: 8),
+                    Text('Create New Playlist', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        final playlist = _playlists[index - 1];
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          leading: Container(
+            width: 50, height: 50,
+            decoration: BoxDecoration(color: const Color(0xFFFFF0E6), borderRadius: BorderRadius.circular(8)),
+            child: Icon(playlist['icon'], color: const Color(0xFFFF5E00), size: 28),
+          ),
+          title: Text(playlist['name'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
+          subtitle: Text('${playlist['count']} videos', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
+          trailing: IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF8E8E8E)), onPressed: (){}),
+          onTap: () {},
+        );
+      },
     );
   }
 }
