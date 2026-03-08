@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'presentation/splash_ui/root_navigator.dart';
 import 'services/sub_app/shortcut_service.dart';
-import 'services/video_player_app/video_library_screen.dart'; 
+import 'services/media_player_app/media_library_screen.dart'; 
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Removed the broken MediaKit initialization
   runApp(
     const ProviderScope(
       child: ArgusArchiveApp(),
@@ -33,15 +32,15 @@ class _ArgusArchiveAppState extends State<ArgusArchiveApp> {
 
   Future<void> _initShortcuts() async {
     final initialRoute = await ShortcutService.getInitialRoute();
-    if (initialRoute == '/video_library') {
+    if (initialRoute == '/video_library' || initialRoute == '/media_player') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const VideoLibraryScreen()));
+        navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const MediaLibraryScreen()));
       });
     }
 
     ShortcutService.listenToRouteChanges((route) {
-      if (route == '/video_library') {
-        navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const VideoLibraryScreen()));
+      if (route == '/video_library' || route == '/media_player') {
+        navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const MediaLibraryScreen()));
       }
     });
   }
