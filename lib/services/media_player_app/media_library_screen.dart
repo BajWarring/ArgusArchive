@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'video_library_screen.dart';
 import 'audio_library_screen.dart';
 import 'more_menu_screen.dart';
@@ -21,7 +20,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wrapped in Theme to match your exact mockup colors without breaking main app
     return Theme(
       data: ThemeData(
         brightness: Brightness.light,
