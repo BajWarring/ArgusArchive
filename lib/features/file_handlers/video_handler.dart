@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/utils/path_utils.dart';
-import '../../services/video/video_player_controller.dart';
+import '../../services/video_player_app/video_player_controller.dart';
 import '../../providers/video_history_provider.dart';
 import 'file_handler.dart';
 
