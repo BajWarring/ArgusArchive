@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../providers/video_history_provider.dart';
-import '../../features/file_handlers/file_handler_registry.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../presentation/debug_ui/providers.dart';
@@ -12,7 +11,6 @@ class MoreScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch the real data!
     final videoHistory = ref.watch(videoHistoryProvider);
 
     return Scaffold(
