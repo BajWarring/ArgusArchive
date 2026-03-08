@@ -32,9 +32,10 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
     final results = await db.search(query: '', filterType: FileType.audio);
     final allFiles = await db.search(query: '');
     final fallback = allFiles.where((f) => 
-      f.type == FileType.audio || ['mp3','wav','aac','m4a','ogg'].contains(p.extension(f.path).toLowerCase().replaceAll('.',''))
+      ['mp3','wav','aac','m4a','ogg'].contains(p.extension(f.path).toLowerCase().replaceAll('.',''))
     ).toList();
-    return fallback.toSet().toList();
+    // Combine both sets and ensure uniqueness
+    return {...results, ...fallback}.toList();
   }
 
   @override
@@ -162,7 +163,6 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
     );
   }
 
-  // Dynamic Grouper used for Albums/Artists (Grouping by parent folder name since ID3 tags aren't parsed)
   Widget _buildGroupedList(List<FileEntry> audios, String title, IconData icon) {
     final Map<String, int> groups = {};
     for (var a in audios) {
