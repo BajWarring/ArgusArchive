@@ -1,27 +1,15 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/utils/path_utils.dart';
 import '../../services/video/video_player_controller.dart';
+import '../../providers/video_history_provider.dart';
 import 'file_handler.dart';
 
-// ─── MX Player Color Palette ──────────────────────────────────────────────────
-const _kOrange = Color(0xFFFF8C00);
-const _kOrangeDim = Color(0x99FF8C00);
-const _kDarkOverlay = Color(0xCC000000);
-const _kSurfaceOverlay = Color(0xDD1A1A1A);
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const _kSeekSeconds = 10;
-const _kHideDelay = Duration(seconds: 3);
-const _kFeedbackDuration = Duration(milliseconds: 900);
-
-enum _GestureAxis { none, horizontal, vertical }
-enum _TapZone { left, center, right }
-
-// ─── File Handler ─────────────────────────────────────────────────────────────
 class VideoHandler implements FileHandler {
   final List<String> _exts = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'flv', 'ts', 'wmv', 'm4v', '3gp'];
 
@@ -29,8 +17,7 @@ class VideoHandler implements FileHandler {
   bool canHandle(FileEntry entry) => _exts.contains(PathUtils.getExtension(entry.path));
 
   @override
-  Widget buildPreview(FileEntry entry, StorageAdapter adapter) =>
-      const Icon(Icons.movie, color: Colors.indigo);
+  Widget buildPreview(FileEntry entry, StorageAdapter adapter) => const Icon(Icons.movie, color: Colors.indigo);
 
   @override
   Future<void> open(BuildContext context, FileEntry entry, StorageAdapter adapter) async {
@@ -40,1302 +27,770 @@ class VideoHandler implements FileHandler {
   }
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
-class VideoPlayerScreen extends StatefulWidget {
+enum GestureType { none, seek, volume, brightness, zoom }
+enum VideoFitMode { fit, crop, stretch }
+enum ActivePanel { none, audio, cc, ccCustomization, more }
+
+class VideoPlayerScreen extends ConsumerStatefulWidget {
   final FileEntry entry;
   const VideoPlayerScreen({super.key, required this.entry});
-
   @override
-  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
+  ConsumerState<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
-  // Controller
+class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with TickerProviderStateMixin {
   VideoPlayerController? _ctrl;
-
-  // UI State
-  bool _showControls = true;
-  bool _isLocked = false;
-  bool _showLockButton = false;
+  late AnimationController _playPauseAnimController;
+  
+  bool _showUI = true;
   Timer? _hideTimer;
+  bool _isLocked = false;
+  bool _isOrientationLocked = false;
+  VideoFitMode _fitMode = VideoFitMode.fit;
+  ActivePanel _activePanel = ActivePanel.none;
 
-  // Double-tap seek animation
-  bool _showLeftSeek = false;
-  bool _showRightSeek = false;
-  int _leftSeekCount = 1;
-  int _rightSeekCount = 1;
-  Timer? _leftSeekTimer;
-  Timer? _rightSeekTimer;
-
-  // Gesture state
-  _GestureAxis _axis = _GestureAxis.none;
-  Offset _dragStart = Offset.zero;
-  bool _isLeftSide = false;
-  Duration _seekStartPos = Duration.zero;
-  Duration _seekTarget = Duration.zero;
-
-  // A/V values
+  GestureType _currentGesture = GestureType.none;
+  double _simulatedBrightness = 1.0;
   double _volume = 0.5;
-  double _brightness = 0.5;
+  bool _isSpeedingUp = false;
 
-  // Visual feedback overlay
-  bool _showFeedback = false;
-  String _feedbackText = '';
-  IconData? _feedbackIcon;
-  double? _feedbackValue; // 0.0-1.0 for vertical bar
-  Timer? _feedbackTimer;
+  double _currentScale = 1.0;
+  double _baseScale = 1.0;
+  Duration _seekStartPos = Duration.zero;
+  double _accumulatedSeekSeconds = 0.0;
 
-  // Scrubber
-  double? _scrubValue;
+  String _activeOverlay = '';
+  int _animKey = 0;
+  Timer? _overlayTimer;
+  bool _centerPlayVisible = false;
 
-  // Speed
-  double _speed = 1.0;
-
-  // Aspect ratio
-  int _aspectMode = 0;
-  static const _aspectLabels = ['Fit', 'Fill', 'Crop'];
-  static const _aspectIcons = [Icons.fit_screen, Icons.aspect_ratio, Icons.crop];
-
-  // Orientation
-  bool _isLandscape = true;
-
-  // Subtitle delay
-  int _subDelayMs = 0;
+  double _audioDelayMs = 0.0;
+  double _ccDelayMs = 0.0;
+  final List<double> _equalizerBands = List.filled(10, 0.0);
+  
+  // Customization
+  String _ccAlignment = 'Center';
+  double _ccBottomMargin = 8.0;
+  bool _ccHasBackground = true;
+  bool _ccFitToVideo = true;
+  String _ccFont = 'Default';
+  double _ccFontSize = 20.0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
+    _playPauseAnimController = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _forceLandscape();
-    _scheduleHide();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    _startHideTimer();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden) {
-      _ctrl?.pause();
+  void _onViewCreated(int id) {
+    final ctrl = VideoPlayerController(id);
+    setState(() => _ctrl = ctrl);
+    
+    ctrl.stateStream.listen((state) {
+      if (!mounted) return;
+      if (state.isPlaying && _playPauseAnimController.status != AnimationStatus.forward) {
+        _playPauseAnimController.forward();
+      } else if (!state.isPlaying && _playPauseAnimController.status != AnimationStatus.reverse) {
+        _playPauseAnimController.reverse();
+      }
+      setState(() {}); 
+    });
+
+    _loadHistorySettings();
+  }
+
+  void _loadHistorySettings() {
+    final history = ref.read(videoHistoryProvider);
+    final item = history.where((e) => e.path == widget.entry.path).firstOrNull;
+    if (item != null) {
+      _audioDelayMs = item.audioDelayMs;
+      _ccDelayMs = item.subtitleDelayMs;
+      _ctrl?.setAudioDelay(_audioDelayMs.toInt());
+      _ctrl?.setSubtitleDelay(_ccDelayMs.toInt());
+      _ctrl?.seekTo(Duration(milliseconds: item.positionMs));
     }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _hideTimer?.cancel();
-    _feedbackTimer?.cancel();
-    _leftSeekTimer?.cancel();
-    _rightSeekTimer?.cancel();
+    _saveHistory();
     _ctrl?.dispose();
+    _playPauseAnimController.dispose();
+    _hideTimer?.cancel();
+    _overlayTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
-  void _onViewCreated(int id) {
-    setState(() => _ctrl = VideoPlayerController(id));
+  void _saveHistory() {
+    if (_ctrl == null) return;
+    final item = VideoHistoryItem(
+      path: widget.entry.path,
+      title: PathUtils.getName(widget.entry.path),
+      positionMs: _ctrl!.value.position.inMilliseconds,
+      durationMs: _ctrl!.value.duration.inMilliseconds,
+      audioDelayMs: _audioDelayMs,
+      subtitleDelayMs: _ccDelayMs,
+      lastPlayed: DateTime.now(),
+    );
+    ref.read(videoHistoryProvider.notifier).save(item);
   }
 
-  // ─── Orientation ────────────────────────────────────────────────────────
-  void _forceLandscape() {
-    SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    _isLandscape = true;
-  }
-
-  void _toggleOrientation() {
-    if (_isLandscape) {
-      SystemChrome.setPreferredOrientations(
-          [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
-    } else {
-      SystemChrome.setPreferredOrientations(
-          [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    }
-    setState(() => _isLandscape = !_isLandscape);
-  }
-
-  // ─── Control visibility ──────────────────────────────────────────────────
-  void _scheduleHide() {
+  void _startHideTimer() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(_kHideDelay, () {
-      if (mounted) setState(() { _showControls = false; _showLockButton = false; });
-    });
-  }
-
-  void _showControlsNow() {
-    setState(() {
-      if (_isLocked) {
-        _showLockButton = true;
-        _showControls = false;
-      } else {
-        _showControls = true;
+    _hideTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && (_ctrl?.value.isPlaying ?? false) && _currentGesture == GestureType.none && _activePanel == ActivePanel.none) {
+        setState(() => _showUI = false);
       }
     });
-    _scheduleHide();
   }
 
-  void _hideControlsNow() {
-    _hideTimer?.cancel();
-    setState(() { _showControls = false; _showLockButton = false; });
-  }
-
-  // ─── Gesture Feedback overlay ────────────────────────────────────────────
-  void _showFeedbackOverlay({
-    required String text,
-    required IconData icon,
-    double? value,
-  }) {
-    _feedbackTimer?.cancel();
-    setState(() {
-      _showFeedback = true;
-      _feedbackText = text;
-      _feedbackIcon = icon;
-      _feedbackValue = value;
-    });
-    _feedbackTimer = Timer(_kFeedbackDuration, () {
-      if (mounted) setState(() => _showFeedback = false);
-    });
-  }
-
-  // ─── Double-tap seek animation ───────────────────────────────────────────
-  void _triggerDoubleTap(_TapZone zone) {
-    if (zone == _TapZone.left) {
-      _ctrl?.seekBy(const Duration(seconds: -_kSeekSeconds));
-      _leftSeekTimer?.cancel();
-      setState(() { _showLeftSeek = true; _leftSeekCount++; });
-      _leftSeekTimer = Timer(const Duration(milliseconds: 800), () {
-        if (mounted) setState(() { _showLeftSeek = false; _leftSeekCount = 1; });
-      });
-    } else if (zone == _TapZone.right) {
-      _ctrl?.seekBy(const Duration(seconds: _kSeekSeconds));
-      _rightSeekTimer?.cancel();
-      setState(() { _showRightSeek = true; _rightSeekCount++; });
-      _rightSeekTimer = Timer(const Duration(milliseconds: 800), () {
-        if (mounted) setState(() { _showRightSeek = false; _rightSeekCount = 1; });
-      });
-    } else {
-      _ctrl?.togglePlayPause();
+  void _handleSingleTap() {
+    if (_isLocked) {
+      setState(() => _showUI = true);
+      _startHideTimer();
+      return;
     }
+    if (_activePanel != ActivePanel.none) {
+      setState(() => _activePanel = ActivePanel.none);
+      _startHideTimer();
+      return;
+    }
+    setState(() {
+      _showUI = !_showUI;
+      if (_showUI) _startHideTimer();
+    });
   }
 
-  // ─── Pan gestures ────────────────────────────────────────────────────────
-  void _onPanStart(DragStartDetails d) {
-    if (_isLocked || _ctrl == null) return;
-    _dragStart = d.globalPosition;
-    _axis = _GestureAxis.none;
+  void _handleScaleStart(ScaleStartDetails details) {
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    _baseScale = _currentScale;
     _seekStartPos = _ctrl!.value.position;
-    final w = MediaQuery.of(context).size.width;
-    _isLeftSide = d.globalPosition.dx < w / 2;
+    _accumulatedSeekSeconds = 0.0;
+    _currentGesture = GestureType.none;
+    _showUI = true;
   }
 
-  void _onPanUpdate(DragUpdateDetails d) {
-    if (_isLocked || _ctrl == null) return;
-    final dx = d.globalPosition.dx - _dragStart.dx;
-    final dy = d.globalPosition.dy - _dragStart.dy;
-
-    if (_axis == _GestureAxis.none) {
-      if (dx.abs() > 18) { _axis = _GestureAxis.horizontal; }
-      else if (dy.abs() > 18) { _axis = _GestureAxis.vertical; }
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    if (details.pointerCount >= 2) {
+      setState(() {
+        _currentGesture = GestureType.zoom;
+        _currentScale = (_baseScale * details.scale).clamp(0.5, 1.5);
+        _activeOverlay = 'zoom';
+      });
+      return;
     }
 
-    if (_axis == _GestureAxis.horizontal) {
-      final w = MediaQuery.of(context).size.width;
-      final dur = _ctrl!.value.duration;
-      final pct = (dx / w) * 0.35;
-      _seekTarget = _seekStartPos + Duration(milliseconds: (dur.inMilliseconds * pct).toInt());
-      _seekTarget = Duration(milliseconds: _seekTarget.inMilliseconds.clamp(0, dur.inMilliseconds));
-      final delta = _seekTarget - _seekStartPos;
-      final s = delta.inSeconds;
-      final sign = s >= 0 ? '+' : '';
-      setState(() {});
-      _showFeedbackOverlay(
-        text: '$sign${s}s\n${_fmt(_seekTarget)}',
-        icon: s >= 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
-      );
-    } else if (_axis == _GestureAxis.vertical) {
-      final h = MediaQuery.of(context).size.height;
-      final delta = -(d.delta.dy / h) * 1.5;
+    if (details.pointerCount == 1) {
+      final dx = details.focalPointDelta.dx;
+      final dy = details.focalPointDelta.dy;
 
-      if (_isLeftSide) {
-        _brightness = (_brightness + delta).clamp(0.0, 1.0);
-        _ctrl?.setBrightness(_brightness);
-        _showFeedbackOverlay(
-          text: '${(_brightness * 100).toInt()}%',
-          icon: _brightness > 0.6 ? Icons.brightness_high : Icons.brightness_medium,
-          value: _brightness,
-        );
-      } else {
-        _volume = (_volume + delta).clamp(0.0, 1.0);
-        _ctrl?.setVolume(_volume);
-        _showFeedbackOverlay(
-          text: '${(_volume * 100).toInt()}%',
-          icon: _volume > 0.6 ? Icons.volume_up : _volume > 0.1 ? Icons.volume_down : Icons.volume_off,
-          value: _volume,
-        );
+      if (_currentGesture == GestureType.none) {
+        if (dx.abs() > dy.abs() && dx.abs() > 1.5) {
+          _currentGesture = GestureType.seek;
+        } else if (dy.abs() > 1.5) {
+          bool isLeftSwipe = details.focalPoint.dx < MediaQuery.of(context).size.width / 2;
+          _currentGesture = isLeftSwipe ? GestureType.volume : GestureType.brightness;
+        }
       }
+
+      setState(() {
+        if (_currentGesture == GestureType.seek) {
+          _accumulatedSeekSeconds += dx * 0.2;
+          _activeOverlay = 'seek';
+        } else if (_currentGesture == GestureType.brightness) {
+          _simulatedBrightness = (_simulatedBrightness - dy * 0.005).clamp(0.1, 1.0);
+          _activeOverlay = 'brightness'; 
+        } else if (_currentGesture == GestureType.volume) {
+          _volume = (_volume - dy * 0.005).clamp(0.0, 1.0);
+          _ctrl?.setVolume(_volume);
+          _activeOverlay = 'volume'; 
+        }
+      });
     }
   }
 
-  void _onPanEnd(DragEndDetails _) {
-    if (_axis == _GestureAxis.horizontal) {
-      _ctrl?.seekTo(_seekTarget);
+  void _handleScaleEnd(ScaleEndDetails details) {
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    if (_currentGesture == GestureType.seek) {
+      final target = _seekStartPos + Duration(seconds: _accumulatedSeekSeconds.toInt());
+      final clampedTarget = Duration(milliseconds: target.inMilliseconds.clamp(0, _ctrl!.value.duration.inMilliseconds));
+      _ctrl!.seekTo(clampedTarget);
     }
-    setState(() { _axis = _GestureAxis.none; _feedbackTimer?.cancel(); _showFeedback = false; });
+
+    _currentGesture = GestureType.none;
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _activeOverlay = '');
+    });
+    if (_ctrl!.value.isPlaying) _startHideTimer();
   }
 
-  // ─── Long press (2x speed) ───────────────────────────────────────────────
-  void _onLongPressStart(LongPressStartDetails _) {
-    if (_isLocked || _ctrl == null) return;
-    HapticFeedback.lightImpact();
-    _ctrl?.setSpeed(2.0);
-    _showFeedbackOverlay(text: '2× Speed', icon: Icons.speed, value: null);
-    _feedbackTimer?.cancel(); // keep it showing
-    setState(() { _showFeedback = true; _feedbackText = '2× Speed'; _feedbackIcon = Icons.speed; _feedbackValue = null; });
+  void _handleDoubleTapDown(TapDownDetails details) {
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    final width = MediaQuery.of(context).size.width;
+    final x = details.globalPosition.dx;
+
+    setState(() {
+      _animKey++;
+      if (x < width * 0.4) {
+        _activeOverlay = 'left_skip';
+        _ctrl!.seekTo(_ctrl!.value.position - const Duration(seconds: 10));
+      } else if (x > width * 0.6) {
+        _activeOverlay = 'right_skip';
+        _ctrl!.seekTo(_ctrl!.value.position + const Duration(seconds: 10));
+      } else {
+        _centerPlayVisible = true;
+        _ctrl!.togglePlayPause();
+      }
+    });
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() {
+        _activeOverlay = '';
+        _centerPlayVisible = false;
+      });
+    });
   }
 
-  void _onLongPressEnd(LongPressEndDetails _) {
-    if (_isLocked || _ctrl == null) return;
-    _ctrl?.setSpeed(_speed);
-    setState(() => _showFeedback = false);
+  void _showDelayDialog(String title, double currentDelay, Function(double) onChanged) {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: Colors.grey.shade900,
+            title: Text(title, style: const TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${currentDelay.toInt()} ms', style: const TextStyle(color: Colors.white, fontSize: 24)),
+                Slider(
+                  min: -5000, max: 5000, value: currentDelay,
+                  onChanged: (v) {
+                    setDialogState(() => currentDelay = v);
+                    onChanged(v);
+                  },
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(onPressed: () { setDialogState(() => currentDelay -= 100); onChanged(currentDelay); }, child: const Text('-100ms')),
+                    TextButton(onPressed: () { setDialogState(() => currentDelay = 0); onChanged(currentDelay); }, child: const Text('Reset')),
+                    TextButton(onPressed: () { setDialogState(() => currentDelay += 100); onChanged(currentDelay); }, child: const Text('+100ms')),
+                  ],
+                )
+              ],
+            ),
+          );
+        }
+      )
+    );
   }
 
-  // ─── Bottom Sheets ───────────────────────────────────────────────────────
-  void _showSpeedPanel() {
-    _hideTimer?.cancel();
+  void _showEqualizerDialog() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: _kSurfaceOverlay,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _SpeedSheet(
-        current: _speed,
-        onSelect: (s) {
-          setState(() => _speed = s);
-          _ctrl?.setSpeed(s);
-          Navigator.pop(context);
-          _showFeedbackOverlay(text: '${s}x', icon: Icons.speed);
-        },
-      ),
-    ).then((_) => _scheduleHide());
-  }
-
-  void _showAudioPanel() {
-    _hideTimer?.cancel();
-    final tracks = _ctrl?.value.audioTracks ?? [];
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: _kSurfaceOverlay,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _TrackSheet(
-        title: 'Audio Tracks',
-        tracks: tracks,
-        onSelect: (t) { _ctrl?.selectTrack(t, true); Navigator.pop(context); },
-      ),
-    ).then((_) => _scheduleHide());
-  }
-
-  void _showSubtitlePanel() {
-    _hideTimer?.cancel();
-    showModalBottomSheet(
-      context: context,
+      backgroundColor: Colors.grey.shade900,
       isScrollControlled: true,
-      backgroundColor: _kSurfaceOverlay,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => _SubtitleSheet(
-        tracks: _ctrl?.value.subtitleTracks ?? [],
-        delayMs: _subDelayMs,
-        onSelectTrack: (t) { _ctrl?.selectTrack(t, false); Navigator.pop(ctx); },
-        onDisable: () { _ctrl?.disableSubtitles(); Navigator.pop(ctx); },
-        onDelayChanged: (ms) {
-          setState(() => _subDelayMs = ms);
-          _ctrl?.setSubtitleDelay(ms);
-        },
-      ),
-    ).then((_) => _scheduleHide());
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                const Text('Equalizer', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: List.generate(10, (index) => Column(
+                      children: [
+                        Expanded(
+                          child: RotatedBox(
+                            quarterTurns: 3,
+                            child: Slider(
+                              min: -12.0, max: 12.0,
+                              value: _equalizerBands[index],
+                              onChanged: (v) {
+                                setModalState(() => _equalizerBands[index] = v);
+                                _ctrl?.setEqualizer(_equalizerBands);
+                              },
+                            ),
+                          ),
+                        ),
+                        Text('${(index+1)*100}Hz', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                      ],
+                    )),
+                  ),
+                )
+              ],
+            ),
+          );
+        }
+      )
+    );
   }
 
-  // ─── Build ───────────────────────────────────────────────────────────────
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop();
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          fit: StackFit.expand,
+  void _showCastDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey.shade900,
+      builder: (ctx) => const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Native ExoPlayer surface ─────────────────────────────────
-            AndroidView(
-              viewType: 'com.app.argusarchive/video_player',
-              creationParams: {'path': widget.entry.path},
-              creationParamsCodec: const StandardMessageCodec(),
-              onPlatformViewCreated: _onViewCreated,
+            Text('Cast to Device', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            SizedBox(height: 16),
+            ListTile(
+              leading: Icon(Icons.tv, color: Colors.white),
+              title: Text('Living Room TV', style: TextStyle(color: Colors.white)),
+              subtitle: Text('Available', style: TextStyle(color: Colors.green)),
             ),
-
-            // ── Dark gradient overlay when controls visible ───────────────
-            if (_showControls) ...[
-              // Top gradient
-              Positioned(
-                top: 0, left: 0, right: 0, height: 140,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.black87, Colors.transparent],
-                    ),
-                  ),
-                ),
-              ),
-              // Bottom gradient
-              Positioned(
-                bottom: 0, left: 0, right: 0, height: 160,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [Colors.black87, Colors.transparent],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-
-            // ── Three-zone gesture layer ──────────────────────────────────
-            _GestureZoneLayer(
-              isLocked: _isLocked,
-              onTapZone: (zone) {
-                if (_showControls || _showLockButton) {
-                  _hideControlsNow();
-                } else {
-                  _showControlsNow();
-                }
-              },
-              onDoubleTapZone: _triggerDoubleTap,
-              onPanStart: _onPanStart,
-              onPanUpdate: _onPanUpdate,
-              onPanEnd: _onPanEnd,
-              onLongPressStart: _onLongPressStart,
-              onLongPressEnd: _onLongPressEnd,
-            ),
-
-            // ── Double-tap seek ripples ───────────────────────────────────
-            if (_showLeftSeek) _SeekRipple(isLeft: true, seconds: _leftSeekCount * _kSeekSeconds),
-            if (_showRightSeek) _SeekRipple(isLeft: false, seconds: _rightSeekCount * _kSeekSeconds),
-
-            // ── Gesture feedback (volume / brightness / seek) ─────────────
-            if (_showFeedback) _FeedbackPill(text: _feedbackText, icon: _feedbackIcon, value: _feedbackValue),
-
-            // ── Top controls bar ──────────────────────────────────────────
-            if (_showControls && !_isLocked)
-              Positioned(
-                top: 0, left: 0, right: 0,
-                child: SafeArea(child: _TopBar(
-                  title: PathUtils.getName(widget.entry.path),
-                  onBack: () => Navigator.of(context).pop(),
-                  onPiP: () => _ctrl?.enterPiP(),
-                  onSpeed: _showSpeedPanel,
-                  speed: _speed,
-                )),
-              ),
-
-            // ── Center play/pause (only when controls visible) ────────────
-            if (_showControls && !_isLocked && _ctrl != null)
-              Center(child: _CenterControls(stream: _ctrl!.stateStream, ctrl: _ctrl!)),
-
-            // ── Bottom controls bar ───────────────────────────────────────
-            if (_showControls && !_isLocked && _ctrl != null)
-              Positioned(
-                bottom: 0, left: 0, right: 0,
-                child: SafeArea(
-                  child: _BottomBar(
-                    stream: _ctrl!.stateStream,
-                    ctrl: _ctrl!,
-                    aspectMode: _aspectMode,
-                    aspectIcons: _aspectIcons,
-                    aspectLabels: _aspectLabels,
-                    isLandscape: _isLandscape,
-                    scrubValue: _scrubValue,
-                    onScrubStart: (v) { _hideTimer?.cancel(); setState(() => _scrubValue = v); },
-                    onScrubChanged: (v) => setState(() => _scrubValue = v),
-                    onScrubEnd: (v) {
-                      _ctrl?.seekTo(Duration(milliseconds: v.toInt()));
-                      setState(() => _scrubValue = null);
-                      _scheduleHide();
-                    },
-                    onLock: () {
-                      setState(() { _isLocked = true; _showControls = false; });
-                      _hideTimer?.cancel();
-                    },
-                    onAspectRatio: () {
-                      final next = (_aspectMode + 1) % 3;
-                      setState(() => _aspectMode = next);
-                      _ctrl?.setAspectRatio(next);
-                      _showFeedbackOverlay(text: _aspectLabels[next], icon: _aspectIcons[next]);
-                    },
-                    onRotate: _toggleOrientation,
-                    onAudio: _showAudioPanel,
-                    onSubtitle: _showSubtitlePanel,
-                  ),
-                ),
-              ),
-
-            // ── Lock overlay ──────────────────────────────────────────────
-            if (_isLocked && _showLockButton)
-              Positioned(
-                left: 24, top: 0, bottom: 0,
-                child: Center(
-                  child: _LockButton(onUnlock: () {
-                    setState(() { _isLocked = false; _showLockButton = false; _showControls = true; });
-                    _scheduleHide();
-                  }),
-                ),
-              ),
+            SizedBox(height: 16),
+            Center(child: CircularProgressIndicator()),
+            Center(child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text('Searching for devices...', style: TextStyle(color: Colors.white54)),
+            ))
           ],
         ),
-      ),
+      )
     );
   }
-}
 
-// ─── Gesture Zone Layer ───────────────────────────────────────────────────────
-class _GestureZoneLayer extends StatefulWidget {
-  final bool isLocked;
-  final void Function(_TapZone) onTapZone;
-  final void Function(_TapZone) onDoubleTapZone;
-  final void Function(DragStartDetails) onPanStart;
-  final void Function(DragUpdateDetails) onPanUpdate;
-  final void Function(DragEndDetails) onPanEnd;
-  final void Function(LongPressStartDetails) onLongPressStart;
-  final void Function(LongPressEndDetails) onLongPressEnd;
-
-  const _GestureZoneLayer({
-    required this.isLocked,
-    required this.onTapZone,
-    required this.onDoubleTapZone,
-    required this.onPanStart,
-    required this.onPanUpdate,
-    required this.onPanEnd,
-    required this.onLongPressStart,
-    required this.onLongPressEnd,
-  });
-
-  @override
-  State<_GestureZoneLayer> createState() => _GestureZoneLayerState();
-}
-
-class _GestureZoneLayerState extends State<_GestureZoneLayer> {
-  // Per-zone double-tap tracking
-  Timer? _leftTapTimer;
-  Timer? _rightTapTimer;
-  Timer? _centerTapTimer;
-  int _leftTaps = 0;
-  int _rightTaps = 0;
-  int _centerTaps = 0;
-
-  void _handleTap(double dx, double width) {
-    final pct = dx / width;
-    _TapZone zone;
-    if (pct < 0.33) {
-      zone = _TapZone.left;
-    } else if (pct > 0.67) {
-      zone = _TapZone.right;
-    } else {
-      zone = _TapZone.center;
-    }
-
-    if (zone == _TapZone.left) {
-      _leftTaps++;
-      _leftTapTimer?.cancel();
-      if (_leftTaps >= 2) {
-        _leftTaps = 0;
-        widget.onDoubleTapZone(_TapZone.left);
-      } else {
-        _leftTapTimer = Timer(const Duration(milliseconds: 280), () {
-          if (_leftTaps == 1) widget.onTapZone(_TapZone.left);
-          _leftTaps = 0;
-        });
-      }
-    } else if (zone == _TapZone.right) {
-      _rightTaps++;
-      _rightTapTimer?.cancel();
-      if (_rightTaps >= 2) {
-        _rightTaps = 0;
-        widget.onDoubleTapZone(_TapZone.right);
-      } else {
-        _rightTapTimer = Timer(const Duration(milliseconds: 280), () {
-          if (_rightTaps == 1) widget.onTapZone(_TapZone.right);
-          _rightTaps = 0;
-        });
-      }
-    } else {
-      _centerTaps++;
-      _centerTapTimer?.cancel();
-      if (_centerTaps >= 2) {
-        _centerTaps = 0;
-        widget.onDoubleTapZone(_TapZone.center);
-      } else {
-        _centerTapTimer = Timer(const Duration(milliseconds: 280), () {
-          if (_centerTaps == 1) widget.onTapZone(_TapZone.center);
-          _centerTaps = 0;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _leftTapTimer?.cancel();
-    _rightTapTimer?.cancel();
-    _centerTapTimer?.cancel();
-    super.dispose();
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return duration.inHours > 0 ? '${duration.inHours}:$minutes:$seconds' : '$minutes:$seconds';
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        return GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTapUp: (d) => _handleTap(d.localPosition.dx, constraints.maxWidth),
-          onPanStart: widget.onPanStart,
-          onPanUpdate: widget.onPanUpdate,
-          onPanEnd: widget.onPanEnd,
-          onLongPressStart: widget.onLongPressStart,
-          onLongPressEnd: widget.onLongPressEnd,
-          onLongPressCancel: () => widget.onLongPressEnd(const LongPressEndDetails()),
-          child: Container(color: Colors.transparent),
-        );
-      },
-    );
-  }
-}
-
-// ─── Seek Ripple Widget ───────────────────────────────────────────────────────
-class _SeekRipple extends StatefulWidget {
-  final bool isLeft;
-  final int seconds;
-  const _SeekRipple({required this.isLeft, required this.seconds});
-
-  @override
-  State<_SeekRipple> createState() => _SeekRippleState();
-}
-
-class _SeekRippleState extends State<_SeekRipple> with SingleTickerProviderStateMixin {
-  late final AnimationController _anim;
-  late final Animation<double> _scale;
-  late final Animation<double> _fade;
-
-  @override
-  void initState() {
-    super.initState();
-    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _scale = Tween(begin: 0.6, end: 1.1).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
-    _fade = Tween(begin: 0.85, end: 0.0).animate(CurvedAnimation(parent: _anim, curve: Curves.easeIn));
-    _anim.forward();
-  }
-
-  @override
-  void dispose() { _anim.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 0, bottom: 0,
-      left: widget.isLeft ? 0 : null,
-      right: widget.isLeft ? null : 0,
-      width: MediaQuery.of(context).size.width * 0.35,
-      child: Center(
-        child: AnimatedBuilder(
-          animation: _anim,
-          builder: (_, __) => Opacity(
-            opacity: _fade.value,
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
             child: Transform.scale(
-              scale: _scale.value,
-              child: Container(
-                width: 110,
-                height: 110,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
+              scale: _currentScale,
+              child: AndroidView(
+                viewType: 'com.app.argusarchive/video_player',
+                creationParams: {'path': widget.entry.path},
+                creationParamsCodec: const StandardMessageCodec(),
+                onPlatformViewCreated: _onViewCreated,
+              ),
+            ),
+          ),
+          IgnorePointer(child: Container(color: Colors.black.withOpacity(1.0 - _simulatedBrightness))),
+          GestureDetector(
+            onTap: _handleSingleTap,
+            onDoubleTapDown: _handleDoubleTapDown,
+            onScaleStart: _handleScaleStart,
+            onScaleUpdate: _handleScaleUpdate,
+            onScaleEnd: _handleScaleEnd,
+            onLongPressStart: (_) {
+              if (_isLocked || _activePanel != ActivePanel.none) return;
+              setState(() => _isSpeedingUp = true);
+              _ctrl?.setSpeed(2.0);
+              HapticFeedback.lightImpact();
+            },
+            onLongPressEnd: (_) {
+              if (_isLocked) return;
+              setState(() => _isSpeedingUp = false);
+              _ctrl?.setSpeed(1.0);
+            },
+            behavior: HitTestBehavior.translucent,
+            child: Container(color: Colors.transparent),
+          ),
+          
+          if (_activeOverlay == 'left_skip')
+            Align(alignment: Alignment.centerLeft, child: _TriangleArrows(key: ValueKey('L$_animKey'), isForward: false)),
+          if (_centerPlayVisible)
+            Align(
+              alignment: Alignment.center, 
+              child: AnimatedIcon(icon: AnimatedIcons.play_pause, progress: _playPauseAnimController, color: Colors.white, size: 80)
+            ),
+          if (_activeOverlay == 'right_skip')
+            Align(alignment: Alignment.centerRight, child: _TriangleArrows(key: ValueKey('R$_animKey'), isForward: true)),
+          
+          if (_isSpeedingUp)
+            const Positioned(
+              top: 40, left: 0, right: 0,
+              child: Center(
+                child: Chip(
+                  backgroundColor: Colors.black87,
+                  avatar: Icon(Icons.fast_forward, color: Colors.white, size: 18),
+                  label: Text('2.0x Speed', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        3,
-                        (i) => Icon(
-                          widget.isLeft ? Icons.chevron_left : Icons.chevron_right,
-                          color: Colors.white.withValues(alpha: (0.4 + i * 0.3).clamp(0, 1)),
-                          size: 22,
+              ),
+            ),
+
+          if (_activeOverlay == 'zoom')
+            Align(alignment: Alignment.topCenter, child: Padding(padding: const EdgeInsets.only(top: 80), child: Chip(backgroundColor: Colors.black87, label: Text('Zoom: ${(_currentScale * 100).toInt()}%', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))))),
+          
+          if (_activeOverlay == 'seek')
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(16)),
+                child: Text('Seek to: ${_formatDuration(_seekStartPos + Duration(seconds: _accumulatedSeekSeconds.toInt()))}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+            ),
+
+          if (_activeOverlay == 'volume' || _activeOverlay == 'brightness')
+            Align(
+              alignment: _activeOverlay == 'volume' ? Alignment.centerRight : Alignment.centerLeft,
+              child: Padding(
+                padding: _activeOverlay == 'volume' ? const EdgeInsets.only(right: 32) : const EdgeInsets.only(left: 32),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+                  decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(30)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(_activeOverlay == 'volume' ? Icons.volume_up : Icons.brightness_6, color: Colors.white, size: 24),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 100, width: 4,
+                        child: Stack(
+                          alignment: Alignment.bottomCenter,
+                          children: [
+                            Container(decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                            FractionallySizedBox(heightFactor: _activeOverlay == 'volume' ? _volume : _simulatedBrightness, child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(2)))),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${widget.seconds}s',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          AnimatedOpacity(
+            opacity: _showUI && _activePanel == ActivePanel.none ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            child: IgnorePointer(
+              ignoring: !_showUI || _activePanel != ActivePanel.none,
+              child: _isLocked ? Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 32.0),
+                  child: IconButton(icon: const Icon(Icons.lock, color: Colors.white, size: 32), onPressed: () { setState(() => _isLocked = false); _startHideTimer(); }),
+                ),
+              ) : _buildUnlockedUI(),
+            ),
+          ),
+
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            top: 0, bottom: 0,
+            right: _activePanel != ActivePanel.none ? 0 : -400,
+            child: Container(
+              width: 350,
+              color: const Color(0xFF000000),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Expanded(child: SingleChildScrollView(child: _buildRightPanelContent())),
                   ],
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
-}
 
-// ─── Feedback Pill ────────────────────────────────────────────────────────────
-class _FeedbackPill extends StatelessWidget {
-  final String text;
-  final IconData? icon;
-  final double? value; // 0-1 for vertical bar
+  Widget _buildUnlockedUI() {
+    final pos = _ctrl?.value.position ?? Duration.zero;
+    final dur = _ctrl?.value.duration ?? Duration.zero;
+    final maxMs = dur.inMilliseconds.toDouble() > 0 ? dur.inMilliseconds.toDouble() : 1.0;
 
-  const _FeedbackPill({required this.text, this.icon, this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          color: _kDarkOverlay,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, color: _kOrange, size: 30),
-              const SizedBox(width: 10),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black87, Colors.transparent])),
+          child: Row(
+            children: [
+              IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
+              Expanded(child: Text(PathUtils.getName(widget.entry.path), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2))),
+              IconButton(icon: const Icon(Icons.cast, color: Colors.white), onPressed: _showCastDialog),
+              IconButton(icon: const Icon(Icons.audiotrack, color: Colors.white), onPressed: () => setState(()=> _activePanel = ActivePanel.audio)),
+              IconButton(icon: const Icon(Icons.closed_caption, color: Colors.white), onPressed: () => setState(()=> _activePanel = ActivePanel.cc)),
+              IconButton(icon: const Icon(Icons.more_vert, color: Colors.white), onPressed: () => setState(()=> _activePanel = ActivePanel.more)),
             ],
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  text,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    height: 1.3,
-                  ),
-                ),
-                if (value != null) ...[
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: 120,
-                    height: 4,
-                    child: LinearProgressIndicator(
-                      value: value,
-                      backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation(_kOrange),
-                      borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black87, Colors.transparent])),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Text(_formatDuration(pos), style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderThemeData(trackHeight: 2, activeTrackColor: const Color(0xFF4285F4), inactiveTrackColor: Colors.white24, thumbColor: const Color(0xFF4285F4)),
+                      child: Slider(
+                        value: pos.inMilliseconds.toDouble().clamp(0, maxMs),
+                        min: 0.0,
+                        max: maxMs,
+                        onChanged: (val) { _hideTimer?.cancel(); _ctrl?.seekTo(Duration(milliseconds: val.toInt())); },
+                        onChangeEnd: (_) => _startHideTimer(),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Text(_formatDuration(dur), style: const TextStyle(color: Colors.white, fontSize: 13)),
                 ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(icon: const Icon(Icons.lock_open, color: Colors.white), onPressed: () => setState(() { _isLocked = true; _showUI = false; })),
+                      IconButton(icon: Icon(_isOrientationLocked ? Icons.screen_lock_rotation : Icons.screen_rotation, color: _isOrientationLocked ? const Color(0xFF4285F4) : Colors.white), onPressed: () {
+                        setState(() {
+                          _isOrientationLocked = !_isOrientationLocked;
+                          if (_isOrientationLocked) {
+                            SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+                          } else {
+                            SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+                          }
+                        });
+                      }),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      IconButton(iconSize: 28, icon: const Icon(Icons.replay_10, color: Colors.white), onPressed: () => _ctrl?.seekBy(const Duration(seconds: -10))),
+                      const SizedBox(width: 16),
+                      IconButton(
+                        iconSize: 42,
+                        icon: AnimatedIcon(icon: AnimatedIcons.play_pause, progress: _playPauseAnimController, color: Colors.white),
+                        onPressed: () => _ctrl?.togglePlayPause(),
+                      ),
+                      const SizedBox(width: 16),
+                      IconButton(iconSize: 28, icon: const Icon(Icons.forward_10, color: Colors.white), onPressed: () => _ctrl?.seekBy(const Duration(seconds: 10))),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      TextButton(onPressed: () {
+                        setState(() {
+                           _fitMode = _fitMode == VideoFitMode.fit ? VideoFitMode.crop : (_fitMode == VideoFitMode.crop ? VideoFitMode.stretch : VideoFitMode.fit);
+                           _ctrl?.setAspectRatio(_fitMode.index);
+                        });
+                      }, child: const Text('FIT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                    ],
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRightPanelContent() {
+    switch (_activePanel) {
+      case ActivePanel.audio:
+        final tracks = _ctrl?.value.audioTracks ?? [];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPanelHeader('Audio'),
+            if (tracks.isEmpty) const Padding(padding: EdgeInsets.only(left: 16), child: Text('No tracks available', style: TextStyle(color: Colors.white54))),
+            ...tracks.map((t) => _buildCheckboxListTile('${t.language.toUpperCase()} — ${t.label}', t.isSelected, () { _ctrl?.selectTrack(t, true); setState((){}); })),
+            const Divider(color: Color(0xFF2C2C2E), height: 32),
+            _buildDelayAdjuster('Synchronization', _audioDelayMs, (v) { setState(() => _audioDelayMs = v); _ctrl?.setAudioDelay(v.toInt()); }),
+          ],
+        );
+      case ActivePanel.cc:
+        final tracks = _ctrl?.value.subtitleTracks ?? [];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPanelHeader('Subtitle'),
+            ListTile(title: const Text('Off', style: TextStyle(color: Colors.white)), onTap: () { _ctrl?.disableSubtitles(); setState((){}); }),
+            ...tracks.map((t) => _buildCheckboxListTile('${t.language.toUpperCase()} — ${t.label}', t.isSelected, () { _ctrl?.selectTrack(t, false); setState((){}); })),
+            const Divider(color: Color(0xFF2C2C2E), height: 32),
+            _buildDelayAdjuster('Synchronization', _ccDelayMs, (v) { setState(() => _ccDelayMs = v); _ctrl?.setSubtitleDelay(v.toInt()); }),
+            const Divider(color: Color(0xFF2C2C2E), height: 32),
+            ListTile(
+              title: const Text('Subtitles Customization', style: TextStyle(color: Colors.white, fontSize: 15)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.white),
+              onTap: () => setState(() => _activePanel = ActivePanel.ccCustomization),
+            )
+          ],
+        );
+      case ActivePanel.ccCustomization:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => setState(()=> _activePanel = ActivePanel.cc)),
+                const Text('Subtitles Customization', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
+            const SizedBox(height: 16),
+            const Padding(padding: EdgeInsets.only(left: 16.0), child: Text('Layout', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
+                children: [
+                  const Text('Bottom margins', style: TextStyle(color: Colors.grey)),
+                  Expanded(
+                    child: SliderTheme(
+                      data: const SliderThemeData(activeTrackColor: Colors.grey, inactiveTrackColor: Color(0xFF2C2C2E), thumbColor: Color(0xFF4285F4)),
+                      child: Slider(value: _ccBottomMargin, min: 0, max: 50, onChanged: (v) => setState(()=> _ccBottomMargin = v)),
+                    ),
+                  ),
+                  Text('${_ccBottomMargin.toInt()}', style: const TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+            Theme(
+              data: Theme.of(context).copyWith(unselectedWidgetColor: Colors.grey),
+              child: CheckboxListTile(
+                title: const Text('Background', style: TextStyle(color: Colors.white)),
+                value: _ccHasBackground,
+                onChanged: (v) { if (v != null) setState(()=> _ccHasBackground = v); },
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+            ),
           ],
-        ),
+        );
+      case ActivePanel.more:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPanelHeader('More Settings'),
+            ListTile(leading: const Icon(Icons.equalizer, color: Colors.white), title: const Text('Equalizer', style: TextStyle(color: Colors.white)), onTap: _showEqualizerDialog),
+            ListTile(leading: const Icon(Icons.speed, color: Colors.white), title: const Text('Playback Speed', style: TextStyle(color: Colors.white)), onTap: (){}),
+          ],
+        );
+      default: return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildPanelHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildCheckboxListTile(String title, bool isSelected, VoidCallback onTap) {
+    return Theme(
+      data: Theme.of(context).copyWith(unselectedWidgetColor: Colors.grey[700]),
+      child: CheckboxListTile(
+        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15)),
+        value: isSelected,
+        onChanged: (_) => onTap(),
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
       ),
     );
   }
-}
 
-// ─── Top Bar ──────────────────────────────────────────────────────────────────
-class _TopBar extends StatelessWidget {
-  final String title;
-  final VoidCallback onBack;
-  final VoidCallback onPiP;
-  final VoidCallback onSpeed;
-  final double speed;
-
-  const _TopBar({
-    required this.title,
-    required this.onBack,
-    required this.onPiP,
-    required this.onSpeed,
-    required this.speed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildDelayAdjuster(String title, double value, Function(double) onChanged) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: onBack,
-          ),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+          Text(title, style: const TextStyle(color: Colors.white, fontSize: 15)),
+          Row(
+            children: [
+              InkWell(onTap: () => onChanged((value - 100).clamp(-5000.0, 5000.0)), child: const Icon(Icons.remove, color: Colors.white)),
+              const SizedBox(width: 12),
+              Container(
+                width: 70, height: 36, alignment: Alignment.center,
+                decoration: BoxDecoration(color: const Color(0xFF1C1C1E), borderRadius: BorderRadius.circular(4)),
+                child: Text('${value.toInt()}ms', style: const TextStyle(color: Colors.white, fontSize: 16)),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          // Speed indicator button
-          GestureDetector(
-            onTap: onSpeed,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: speed != 1.0 ? _kOrange.withValues(alpha: 0.3) : Colors.white12,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: speed != 1.0 ? _kOrange : Colors.transparent,
-                ),
-              ),
-              child: Text(
-                '${speed}x',
-                style: TextStyle(
-                  color: speed != 1.0 ? _kOrange : Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.picture_in_picture_alt, color: Colors.white),
-            onPressed: onPiP,
-            tooltip: 'Picture in Picture',
-          ),
+              const SizedBox(width: 12),
+              InkWell(onTap: () => onChanged((value + 100).clamp(-5000.0, 5000.0)), child: const Icon(Icons.add, color: Colors.white)),
+            ],
+          )
         ],
       ),
     );
   }
 }
 
-// ─── Center Controls ──────────────────────────────────────────────────────────
-class _CenterControls extends StatelessWidget {
-  final Stream<VideoPlaybackState> stream;
-  final VideoPlayerController ctrl;
+class _TriangleArrows extends StatefulWidget {
+  final bool isForward;
+  const _TriangleArrows({super.key, required this.isForward});
+  @override
+  State<_TriangleArrows> createState() => _TriangleArrowsState();
+}
 
-  const _CenterControls({required this.stream, required this.ctrl});
+class _TriangleArrowsState extends State<_TriangleArrows> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..repeat();
+  }
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<VideoPlaybackState>(
-      stream: stream,
-      builder: (_, snap) {
-        final state = snap.data ?? const VideoPlaybackState();
-        if (state.isBuffering) {
-          return const SizedBox(
-            width: 56,
-            height: 56,
-            child: CircularProgressIndicator(color: _kOrange, strokeWidth: 3),
-          );
-        }
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) {
         return Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _CircleIconBtn(
-              icon: Icons.replay_10,
-              size: 36,
-              onTap: () => ctrl.seekBy(const Duration(seconds: -10)),
-            ),
-            const SizedBox(width: 24),
-            GestureDetector(
-              onTap: ctrl.togglePlayPause,
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white30, width: 1.5),
-                ),
-                child: Icon(
-                  state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 44,
-                ),
-              ),
-            ),
-            const SizedBox(width: 24),
-            _CircleIconBtn(
-              icon: Icons.forward_10,
-              size: 36,
-              onTap: () => ctrl.seekBy(const Duration(seconds: 10)),
-            ),
-          ],
+          children: List.generate(3, (index) {
+            double fade = (_ctrl.value - (index * 0.2)) * 3;
+            if (fade < 0) fade = 0;
+            if (fade > 1) fade = 1 - (fade - 1);
+            fade = fade.clamp(0.0, 1.0);
+            Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withOpacity(fade), size: 48);
+            if (!widget.isForward) arrow = Transform.rotate(angle: pi, child: arrow);
+            return arrow; 
+          }).toList()..replaceRange(0, 3, widget.isForward ? [
+              _buildFadingTriangle(0), _buildFadingTriangle(1), _buildFadingTriangle(2)
+            ] : [
+              _buildFadingTriangle(2), _buildFadingTriangle(1), _buildFadingTriangle(0)
+          ]),
         );
       },
     );
   }
-}
-
-class _CircleIconBtn extends StatelessWidget {
-  final IconData icon;
-  final double size;
-  final VoidCallback onTap;
-
-  const _CircleIconBtn({required this.icon, required this.size, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: Colors.white, size: size),
-      ),
-    );
+  
+  Widget _buildFadingTriangle(int index) {
+    double fade = (_ctrl.value - (index * 0.2)) * 3;
+    if (fade < 0) fade = 0;
+    if (fade > 1) fade = 2 - fade;
+    fade = fade.clamp(0.0, 1.0);
+    Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withOpacity(fade), size: 48);
+    if (!widget.isForward) arrow = Transform.rotate(angle: pi, child: arrow);
+    return arrow;
   }
-}
-
-// ─── Bottom Bar ───────────────────────────────────────────────────────────────
-class _BottomBar extends StatelessWidget {
-  final Stream<VideoPlaybackState> stream;
-  final VideoPlayerController ctrl;
-  final int aspectMode;
-  final List<IconData> aspectIcons;
-  final List<String> aspectLabels;
-  final bool isLandscape;
-  final double? scrubValue;
-  final void Function(double) onScrubStart;
-  final void Function(double) onScrubChanged;
-  final void Function(double) onScrubEnd;
-  final VoidCallback onLock;
-  final VoidCallback onAspectRatio;
-  final VoidCallback onRotate;
-  final VoidCallback onAudio;
-  final VoidCallback onSubtitle;
-
-  const _BottomBar({
-    required this.stream,
-    required this.ctrl,
-    required this.aspectMode,
-    required this.aspectIcons,
-    required this.aspectLabels,
-    required this.isLandscape,
-    required this.scrubValue,
-    required this.onScrubStart,
-    required this.onScrubChanged,
-    required this.onScrubEnd,
-    required this.onLock,
-    required this.onAspectRatio,
-    required this.onRotate,
-    required this.onAudio,
-    required this.onSubtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<VideoPlaybackState>(
-      stream: stream,
-      builder: (_, snap) {
-        final state = snap.data ?? const VideoPlaybackState();
-        final maxMs = state.duration.inMilliseconds.toDouble();
-        final bufMs = state.buffered.inMilliseconds.toDouble();
-        final curMs = scrubValue ?? state.position.inMilliseconds.toDouble();
-        final safeMax = maxMs > 0 ? maxMs : 1.0;
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Progress row
-              Row(
-                children: [
-                  Text(_fmt(Duration(milliseconds: curMs.toInt())),
-                      style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 3,
-                        activeTrackColor: _kOrange,
-                        inactiveTrackColor: Colors.white24,
-                        secondaryActiveTrackColor: Colors.white38,
-                        thumbColor: _kOrange,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-                        overlayColor: _kOrangeDim,
-                      ),
-                      child: Slider(
-                        min: 0,
-                        max: safeMax,
-                        secondaryTrackValue: bufMs.clamp(0, safeMax),
-                        value: curMs.clamp(0, safeMax),
-                        onChangeStart: onScrubStart,
-                        onChanged: onScrubChanged,
-                        onChangeEnd: onScrubEnd,
-                      ),
-                    ),
-                  ),
-                  Text(_fmt(state.duration),
-                      style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                ],
-              ),
-              // Controls row
-              Row(
-                children: [
-                  _BarBtn(icon: Icons.lock_open_rounded, onTap: onLock, tooltip: 'Lock'),
-                  _BarBtn(
-                    icon: isLandscape ? Icons.screen_lock_landscape : Icons.screen_lock_portrait,
-                    onTap: onRotate,
-                    tooltip: 'Rotate',
-                  ),
-                  _BarBtn(icon: Icons.audiotrack, onTap: onAudio, tooltip: 'Audio'),
-                  _BarBtn(icon: Icons.subtitles_outlined, onTap: onSubtitle, tooltip: 'Subtitles'),
-                  const Spacer(),
-                  _BarBtn(icon: aspectIcons[aspectMode], onTap: onAspectRatio, tooltip: aspectLabels[aspectMode]),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _BarBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final String tooltip;
-
-  const _BarBtn({required this.icon, required this.onTap, required this.tooltip});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: IconButton(
-        icon: Icon(icon, color: Colors.white, size: 22),
-        onPressed: onTap,
-        padding: const EdgeInsets.all(6),
-      ),
-    );
-  }
-}
-
-// ─── Lock Button ──────────────────────────────────────────────────────────────
-class _LockButton extends StatelessWidget {
-  final VoidCallback onUnlock;
-  const _LockButton({required this.onUnlock});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onUnlock,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _kDarkOverlay,
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: Colors.white24),
-        ),
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.lock, color: Colors.white, size: 28),
-            SizedBox(height: 4),
-            Text('Tap to\nunlock', textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 10)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Speed Sheet ─────────────────────────────────────────────────────────────
-class _SpeedSheet extends StatelessWidget {
-  final double current;
-  final void Function(double) onSelect;
-  static const _speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
-
-  const _SpeedSheet({required this.current, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Playback Speed',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: _speeds.map((s) {
-                final selected = s == current;
-                return GestureDetector(
-                  onTap: () => onSelect(s),
-                  child: Container(
-                    width: 72,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: selected ? _kOrange : Colors.white12,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: selected ? _kOrange : Colors.white24,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Text(
-                      '${s}x',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: selected ? Colors.white : Colors.white70,
-                        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Track Sheet ──────────────────────────────────────────────────────────────
-class _TrackSheet extends StatelessWidget {
-  final String title;
-  final List<VideoTrack> tracks;
-  final void Function(VideoTrack) onSelect;
-
-  const _TrackSheet({required this.title, required this.tracks, required this.onSelect});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              child: Text(title,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-            ),
-            const Divider(height: 1, color: Colors.white12),
-            if (tracks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No tracks available', style: TextStyle(color: Colors.white54)),
-              )
-            else
-              ...tracks.map((t) => ListTile(
-                    leading: Icon(
-                      t.isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: t.isSelected ? _kOrange : Colors.white54,
-                    ),
-                    title: Text(
-                      '${t.language.toUpperCase()} — ${t.label}',
-                      style: TextStyle(
-                        color: t.isSelected ? _kOrange : Colors.white,
-                        fontWeight: t.isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                    onTap: () => onSelect(t),
-                  )),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Subtitle Sheet ──────────────────────────────────────────────────────────
-class _SubtitleSheet extends StatefulWidget {
-  final List<VideoTrack> tracks;
-  final int delayMs;
-  final void Function(VideoTrack) onSelectTrack;
-  final VoidCallback onDisable;
-  final void Function(int) onDelayChanged;
-
-  const _SubtitleSheet({
-    required this.tracks,
-    required this.delayMs,
-    required this.onSelectTrack,
-    required this.onDisable,
-    required this.onDelayChanged,
-  });
-
-  @override
-  State<_SubtitleSheet> createState() => _SubtitleSheetState();
-}
-
-class _SubtitleSheetState extends State<_SubtitleSheet> {
-  late int _delay;
-
-  @override
-  void initState() { super.initState(); _delay = widget.delayMs; }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Subtitles',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-            const SizedBox(height: 12),
-
-            const Text('TRACK', style: TextStyle(fontSize: 11, color: _kOrange, fontWeight: FontWeight.bold, letterSpacing: 1)),
-            const SizedBox(height: 8),
-
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.subtitles_off, color: Colors.white54),
-              title: const Text('Off', style: TextStyle(color: Colors.white)),
-              onTap: widget.onDisable,
-            ),
-            ...widget.tracks.map((t) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                t.isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: t.isSelected ? _kOrange : Colors.white54,
-              ),
-              title: Text(
-                '${t.language.toUpperCase()} — ${t.label}',
-                style: TextStyle(color: t.isSelected ? _kOrange : Colors.white),
-              ),
-              onTap: () => widget.onSelectTrack(t),
-            )),
-
-            const Divider(color: Colors.white12, height: 24),
-
-            const Text('SYNC DELAY', style: TextStyle(fontSize: 11, color: _kOrange, fontWeight: FontWeight.bold, letterSpacing: 1)),
-            const SizedBox(height: 12),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _DelayBtn(
-                  label: '−500ms',
-                  onTap: () {
-                    setState(() => _delay = (_delay - 500).clamp(-5000, 5000));
-                    widget.onDelayChanged(_delay);
-                  },
-                ),
-                const SizedBox(width: 8),
-                _DelayBtn(
-                  label: '−100ms',
-                  onTap: () {
-                    setState(() => _delay = (_delay - 100).clamp(-5000, 5000));
-                    widget.onDelayChanged(_delay);
-                  },
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white10,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${_delay > 0 ? '+' : ''}$_delay ms',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                _DelayBtn(
-                  label: '+100ms',
-                  onTap: () {
-                    setState(() => _delay = (_delay + 100).clamp(-5000, 5000));
-                    widget.onDelayChanged(_delay);
-                  },
-                ),
-                const SizedBox(width: 8),
-                _DelayBtn(
-                  label: '+500ms',
-                  onTap: () {
-                    setState(() => _delay = (_delay + 500).clamp(-5000, 5000));
-                    widget.onDelayChanged(_delay);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton(
-                onPressed: () {
-                  setState(() => _delay = 0);
-                  widget.onDelayChanged(0);
-                },
-                child: const Text('Reset', style: TextStyle(color: Colors.white54)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DelayBtn extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _DelayBtn({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white10,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white24),
-        ),
-        child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
-      ),
-    );
-  }
-}
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
-String _fmt(Duration d) {
-  String two(int n) => n.toString().padLeft(2, '0');
-  if (d.inHours > 0) return '${d.inHours}:${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
-  return '${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
 }
