@@ -27,16 +27,15 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
     super.dispose();
   }
 
-  // Helper to fetch all videos from indexer
   Future<List<FileEntry>> _fetchVideos() async {
     final db = await ref.read(searchDatabaseProvider.future);
     final results = await db.search(query: '', filterType: FileType.video);
-    // Add manual extension fallback for safety
     final allFiles = await db.search(query: '');
     final fallback = allFiles.where((f) => 
-      f.type == FileType.video || ['mp4','mkv','webm','avi'].contains(p.extension(f.path).toLowerCase().replaceAll('.',''))
+      ['mp4','mkv','webm','avi'].contains(p.extension(f.path).toLowerCase().replaceAll('.',''))
     ).toList();
-    return fallback.toSet().toList(); // Ensure unique
+    // Combine both sets and ensure uniqueness
+    return {...results, ...fallback}.toList(); 
   }
 
   @override
@@ -83,7 +82,6 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
   }
 
   Widget _buildFoldersList(List<FileEntry> videos) {
-    // 1. Group videos by their parent folder path
     final Map<String, List<FileEntry>> groupedFolders = {};
     for (var video in videos) {
       final dir = p.dirname(video.path);
@@ -107,7 +105,6 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
         
         return InkWell(
           onTap: () {
-            // Update global path and navigate back to main file browser to view folder
             ref.read(currentPathProvider.notifier).state = path;
             Navigator.pop(context); 
           },
@@ -210,7 +207,6 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
   }
 
   Widget _buildPlaylists() {
-    // Playlists remain mock since the app backend doesn't have a playlist manager yet
     final playlists = [
       {'name': 'Favorites', 'count': 0, 'icon': Icons.favorite_border},
       {'name': 'Watch Later', 'count': 0, 'icon': Icons.watch_later_outlined},
