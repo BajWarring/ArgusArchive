@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/utils/path_utils.dart';
-import '../../services/video_player_app/video_player_controller.dart';
+import '../../services/video_player_app/video_player_controller.dart'; 
 import '../../providers/video_history_provider.dart';
 import 'file_handler.dart';
 
@@ -68,13 +68,9 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
   double _ccDelayMs = 0.0;
   final List<double> _equalizerBands = List.filled(10, 0.0);
   
-  // Customization
-  String _ccAlignment = 'Center';
+  // Customization - Kept only the ones currently actively used in UI
   double _ccBottomMargin = 8.0;
   bool _ccHasBackground = true;
-  bool _ccFitToVideo = true;
-  String _ccFont = 'Default';
-  double _ccFontSize = 20.0;
 
   @override
   void initState() {
@@ -162,12 +158,16 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     }
     setState(() {
       _showUI = !_showUI;
-      if (_showUI) _startHideTimer();
+      if (_showUI) {
+        _startHideTimer();
+      }
     });
   }
 
   void _handleScaleStart(ScaleStartDetails details) {
-    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) {
+      return;
+    }
     _baseScale = _currentScale;
     _seekStartPos = _ctrl!.value.position;
     _accumulatedSeekSeconds = 0.0;
@@ -176,7 +176,10 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
   }
 
   void _handleScaleUpdate(ScaleUpdateDetails details) {
-    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) {
+      return;
+    }
+    
     if (details.pointerCount >= 2) {
       setState(() {
         _currentGesture = GestureType.zoom;
@@ -216,7 +219,10 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
   }
 
   void _handleScaleEnd(ScaleEndDetails details) {
-    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) {
+      return;
+    }
+    
     if (_currentGesture == GestureType.seek) {
       final target = _seekStartPos + Duration(seconds: _accumulatedSeekSeconds.toInt());
       final clampedTarget = Duration(milliseconds: target.inMilliseconds.clamp(0, _ctrl!.value.duration.inMilliseconds));
@@ -226,13 +232,21 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     _currentGesture = GestureType.none;
     _overlayTimer?.cancel();
     _overlayTimer = Timer(const Duration(milliseconds: 800), () {
-      if (mounted) setState(() => _activeOverlay = '');
+      if (mounted) {
+        setState(() => _activeOverlay = '');
+      }
     });
-    if (_ctrl!.value.isPlaying) _startHideTimer();
+    
+    if (_ctrl!.value.isPlaying) {
+      _startHideTimer();
+    }
   }
 
   void _handleDoubleTapDown(TapDownDetails details) {
-    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) return;
+    if (_isLocked || _activePanel != ActivePanel.none || _ctrl == null) {
+      return;
+    }
+    
     final width = MediaQuery.of(context).size.width;
     final x = details.globalPosition.dx;
 
@@ -249,48 +263,16 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
         _ctrl!.togglePlayPause();
       }
     });
+    
     _overlayTimer?.cancel();
     _overlayTimer = Timer(const Duration(milliseconds: 600), () {
-      if (mounted) setState(() {
-        _activeOverlay = '';
-        _centerPlayVisible = false;
-      });
+      if (mounted) {
+        setState(() {
+          _activeOverlay = '';
+          _centerPlayVisible = false;
+        });
+      }
     });
-  }
-
-  void _showDelayDialog(String title, double currentDelay, Function(double) onChanged) {
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            backgroundColor: Colors.grey.shade900,
-            title: Text(title, style: const TextStyle(color: Colors.white)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('${currentDelay.toInt()} ms', style: const TextStyle(color: Colors.white, fontSize: 24)),
-                Slider(
-                  min: -5000, max: 5000, value: currentDelay,
-                  onChanged: (v) {
-                    setDialogState(() => currentDelay = v);
-                    onChanged(v);
-                  },
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    TextButton(onPressed: () { setDialogState(() => currentDelay -= 100); onChanged(currentDelay); }, child: const Text('-100ms')),
-                    TextButton(onPressed: () { setDialogState(() => currentDelay = 0); onChanged(currentDelay); }, child: const Text('Reset')),
-                    TextButton(onPressed: () { setDialogState(() => currentDelay += 100); onChanged(currentDelay); }, child: const Text('+100ms')),
-                  ],
-                )
-              ],
-            ),
-          );
-        }
-      )
-    );
   }
 
   void _showEqualizerDialog() {
@@ -391,7 +373,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
               ),
             ),
           ),
-          IgnorePointer(child: Container(color: Colors.black.withOpacity(1.0 - _simulatedBrightness))),
+          IgnorePointer(child: Container(color: Colors.black.withValues(alpha: 1.0 - _simulatedBrightness))),
           GestureDetector(
             onTap: _handleSingleTap,
             onDoubleTapDown: _handleDoubleTapDown,
@@ -399,13 +381,17 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
             onScaleUpdate: _handleScaleUpdate,
             onScaleEnd: _handleScaleEnd,
             onLongPressStart: (_) {
-              if (_isLocked || _activePanel != ActivePanel.none) return;
+              if (_isLocked || _activePanel != ActivePanel.none) {
+                return;
+              }
               setState(() => _isSpeedingUp = true);
               _ctrl?.setSpeed(2.0);
               HapticFeedback.lightImpact();
             },
             onLongPressEnd: (_) {
-              if (_isLocked) return;
+              if (_isLocked) {
+                return;
+              }
               setState(() => _isSpeedingUp = false);
               _ctrl?.setSpeed(1.0);
             },
@@ -548,7 +534,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
                   const SizedBox(width: 8),
                   Expanded(
                     child: SliderTheme(
-                      data: SliderThemeData(trackHeight: 2, activeTrackColor: const Color(0xFF4285F4), inactiveTrackColor: Colors.white24, thumbColor: const Color(0xFF4285F4)),
+                      data: const SliderThemeData(trackHeight: 2, activeTrackColor: Color(0xFF4285F4), inactiveTrackColor: Colors.white24, thumbColor: Color(0xFF4285F4)),
                       child: Slider(
                         value: pos.inMilliseconds.toDouble().clamp(0, maxMs),
                         min: 0.0,
@@ -768,11 +754,17 @@ class _TriangleArrowsState extends State<_TriangleArrows> with SingleTickerProvi
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (index) {
             double fade = (_ctrl.value - (index * 0.2)) * 3;
-            if (fade < 0) fade = 0;
-            if (fade > 1) fade = 1 - (fade - 1);
+            if (fade < 0) {
+              fade = 0;
+            }
+            if (fade > 1) {
+              fade = 1 - (fade - 1);
+            }
             fade = fade.clamp(0.0, 1.0);
-            Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withOpacity(fade), size: 48);
-            if (!widget.isForward) arrow = Transform.rotate(angle: pi, child: arrow);
+            Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withValues(alpha: fade), size: 48);
+            if (!widget.isForward) {
+              arrow = Transform.rotate(angle: pi, child: arrow);
+            }
             return arrow; 
           }).toList()..replaceRange(0, 3, widget.isForward ? [
               _buildFadingTriangle(0), _buildFadingTriangle(1), _buildFadingTriangle(2)
@@ -786,11 +778,17 @@ class _TriangleArrowsState extends State<_TriangleArrows> with SingleTickerProvi
   
   Widget _buildFadingTriangle(int index) {
     double fade = (_ctrl.value - (index * 0.2)) * 3;
-    if (fade < 0) fade = 0;
-    if (fade > 1) fade = 2 - fade;
+    if (fade < 0) {
+      fade = 0;
+    }
+    if (fade > 1) {
+      fade = 2 - fade;
+    }
     fade = fade.clamp(0.0, 1.0);
-    Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withOpacity(fade), size: 48);
-    if (!widget.isForward) arrow = Transform.rotate(angle: pi, child: arrow);
+    Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withValues(alpha: fade), size: 48);
+    if (!widget.isForward) {
+      arrow = Transform.rotate(angle: pi, child: arrow);
+    }
     return arrow;
   }
 }
