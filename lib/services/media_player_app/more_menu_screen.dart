@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import '../../providers/video_history_provider.dart';
+import '../../providers/media_history_provider.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../presentation/debug_ui/providers.dart';
@@ -11,14 +11,14 @@ class MoreScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final videoHistory = ref.watch(videoHistoryProvider);
+    final history = ref.watch(mediaHistoryProvider);
+    final videoHistory = history.where((e) => e.type == 'video').toList();
+    final audioHistory = history.where((e) => e.type == 'audio').toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
-        actions: [
-          IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF4A4A4A)), onPressed: () {}),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF4A4A4A)), onPressed: () {})],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -26,36 +26,15 @@ class MoreScreen extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Container(
-                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(4)),
-                child: ListTile(
-                  leading: const Icon(Icons.settings_outlined, color: Color(0xFFFF5E00)),
-                  title: const Text('SETTINGS', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)),
-                  onTap: () {},
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Container(
-                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(4)),
-                child: ListTile(
-                  leading: const Icon(Icons.info_outline, color: Color(0xFFFF5E00)),
-                  title: const Text('ABOUT', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)),
-                  onTap: () {},
-                ),
-              ),
+              child: Container(decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(4)), child: ListTile(leading: const Icon(Icons.settings_outlined, color: Color(0xFFFF5E00)), title: const Text('SETTINGS', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)))),
             ),
             const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), child: Divider(color: Color(0xFFE0E0E0))),
             
             _buildHistorySection('Video History'),
-            _buildVideoHistoryList(context, ref, videoHistory),
+            _buildHistoryList(context, ref, videoHistory, true),
 
             _buildHistorySection('Audio History'),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('No audio history recorded yet.', style: TextStyle(color: Colors.grey)),
-            ),
+            _buildHistoryList(context, ref, audioHistory, false),
             
             const SizedBox(height: 24),
           ],
@@ -77,12 +56,9 @@ class MoreScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildVideoHistoryList(BuildContext context, WidgetRef ref, List<VideoHistoryItem> history) {
+  Widget _buildHistoryList(BuildContext context, WidgetRef ref, List<MediaHistoryItem> history, bool isVideo) {
     if (history.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16.0),
-        child: Text('No video history recorded yet.', style: TextStyle(color: Colors.grey)),
-      );
+      return Padding(padding: const EdgeInsets.symmetric(horizontal: 16.0), child: Text('No ${isVideo ? 'video' : 'audio'} history recorded yet.', style: const TextStyle(color: Colors.grey)));
     }
 
     return SizedBox(
@@ -100,9 +76,8 @@ class MoreScreen extends ConsumerWidget {
             child: InkWell(
               onTap: () {
                 final registry = ref.read(fileHandlerRegistryProvider);
-                final adapter = ref.read(storageAdapterProvider);
-                final entry = FileEntry(id: item.path, path: item.path, type: FileType.video, size: 0, modifiedAt: item.lastPlayed);
-                registry.handlerFor(entry)?.open(context, entry, adapter);
+                final entry = FileEntry(id: item.path, path: item.path, type: isVideo ? FileType.video : FileType.audio, size: 0, modifiedAt: item.lastPlayed);
+                registry.handlerFor(entry)?.open(context, entry, ref.read(storageAdapterProvider));
               },
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -110,26 +85,18 @@ class MoreScreen extends ConsumerWidget {
                   Container(
                     width: 120, height: 90,
                     clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(4)),
+                    decoration: BoxDecoration(color: isVideo ? const Color(0xFFE0E0E0) : const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(4)),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        const Center(child: Icon(Icons.movie, color: Colors.white70, size: 40)),
-                        Align(
-                          alignment: Alignment.bottomLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: progress,
-                            child: Container(height: 3, color: const Color(0xFFFF5E00)),
-                          ),
-                        )
+                        Center(child: Icon(isVideo ? Icons.movie : Icons.music_note, color: Colors.white70, size: 40)),
+                        if (isVideo)
+                          Align(alignment: Alignment.bottomLeft, child: FractionallySizedBox(widthFactor: progress, child: Container(height: 3, color: const Color(0xFFFF5E00))))
                       ],
                     ),
                   ),
                   const SizedBox(height: 8),
-                  SizedBox(
-                    width: 120,
-                    child: Text(p.basename(item.path), style: const TextStyle(fontSize: 12, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
+                  SizedBox(width: 120, child: Text(p.basename(item.path), style: const TextStyle(fontSize: 12, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis)),
                 ],
               ),
             ),
