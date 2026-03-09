@@ -5,7 +5,7 @@ import '../../providers/media_history_provider.dart';
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../presentation/debug_ui/providers.dart';
-import '../../presentation/debug_ui/file_thumbnail_debug.dart';
+import 'media_thumbnail.dart';
 
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
@@ -18,7 +18,7 @@ class MoreScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: false, // REMOVES BACK BUTTON
+        automaticallyImplyLeading: false,
         title: const Text('More', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
         actions: [IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF4A4A4A)), onPressed: () {})],
       ),
@@ -112,12 +112,11 @@ class MoreScreen extends ConsumerWidget {
                   Container(
                     width: 120, height: 90,
                     clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(color: isVideo ? const Color(0xFFE0E0E0) : const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(4)),
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(4)),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        FileThumbnailDebug(file: entry, adapter: ref.read(storageAdapterProvider), isDirectory: false),
-                        Center(child: Icon(isVideo ? Icons.movie : Icons.music_note, color: Colors.white70, size: 40)),
+                        MediaThumbnail(file: entry, isVideo: isVideo),
                         if (isVideo)
                           Align(alignment: Alignment.bottomLeft, child: FractionallySizedBox(widthFactor: progress, child: Container(height: 3, color: const Color(0xFFFF5E00))))
                       ],
