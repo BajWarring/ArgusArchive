@@ -6,8 +6,8 @@ import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../presentation/debug_ui/search_providers.dart';
 import '../../providers/media_history_provider.dart';
-import '../../presentation/debug_ui/file_thumbnail_debug.dart';
-import 'media_folder_detail_screen.dart'; 
+import 'media_folder_detail_screen.dart';
+import 'media_thumbnail.dart';
 
 class AudioLibraryScreen extends ConsumerStatefulWidget {
   const AudioLibraryScreen({super.key});
@@ -41,7 +41,7 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: false, // REMOVES BACK BUTTON
+        automaticallyImplyLeading: false, 
         title: const Text('Audio Player', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
         actions: [
           IconButton(icon: const Icon(Icons.search, color: Color(0xFF4A4A4A)), onPressed: () {}),
@@ -81,9 +81,8 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
   }
 
   Widget _buildTracksList(List<FileEntry> audios) {
-    if (audios.isEmpty) {
-      return ListView(children: const [Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('No audio files found.')))]);
-    }
+    if (audios.isEmpty) return ListView(children: const [Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('No audio files found.')))]);
+    
     return ListView.builder(
       itemCount: audios.length,
       itemBuilder: (context, index) {
@@ -92,15 +91,9 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           leading: Container(
             width: 48, height: 48, 
-            decoration: BoxDecoration(color: const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(6)), 
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(6)), 
             clipBehavior: Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                FileThumbnailDebug(file: audio, adapter: ref.read(storageAdapterProvider), isDirectory: false),
-                const Center(child: Icon(Icons.music_note, color: Colors.white70, size: 24)),
-              ],
-            ),
+            child: MediaThumbnail(file: audio, isVideo: false),
           ),
           title: Text(p.basename(audio.path), style: TextStyle(color: index == 0 ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontSize: 16, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(p.basename(p.dirname(audio.path)), style: TextStyle(color: index == 0 ? const Color(0xFFFF5E00) : const Color(0xFF8E8E8E), fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
