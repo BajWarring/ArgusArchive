@@ -6,7 +6,7 @@ import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../providers/media_history_provider.dart';
-import '../../presentation/debug_ui/file_thumbnail_debug.dart';
+import 'media_thumbnail.dart';
 
 class MediaFolderDetailScreen extends ConsumerStatefulWidget {
   final String folderPath;
@@ -40,7 +40,6 @@ class _MediaFolderDetailScreenState extends ConsumerState<MediaFolderDetailScree
 
   @override
   Widget build(BuildContext context) {
-    // ENFORCING THE EXACT SAME LIGHT THEME SO IT MATCHES THE MAIN SUB-APP
     return Theme(
       data: ThemeData(
         brightness: Brightness.light,
@@ -98,15 +97,9 @@ class _MediaFolderDetailScreenState extends ConsumerState<MediaFolderDetailScree
                           Container(
                             width: widget.isVideo ? 110 : 48, 
                             height: widget.isVideo ? 70 : 48,
-                            decoration: BoxDecoration(color: widget.isVideo ? const Color(0xFFE0E0E0) : const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(6)),
+                            decoration: BoxDecoration(borderRadius: BorderRadius.circular(6)),
                             clipBehavior: Clip.antiAlias,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                FileThumbnailDebug(file: file, adapter: ref.read(storageAdapterProvider), isDirectory: false),
-                                Center(child: Icon(widget.isVideo ? Icons.play_circle_fill : Icons.music_note, color: Colors.white70, size: widget.isVideo ? 32 : 24)),
-                              ],
-                            ),
+                            child: MediaThumbnail(file: file, isVideo: widget.isVideo),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
