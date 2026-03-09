@@ -5,7 +5,8 @@ import '../../core/enums/file_type.dart';
 import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../presentation/debug_ui/search_providers.dart';
-import 'media_folder_detail_screen.dart'; // NEW
+import '../../presentation/debug_ui/file_thumbnail_debug.dart';
+import 'media_folder_detail_screen.dart';
 
 class VideoLibraryScreen extends ConsumerStatefulWidget {
   const VideoLibraryScreen({super.key});
@@ -42,6 +43,7 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false, // REMOVES BACK BUTTON
         title: const Text('Video Library', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
         actions: [
           IconButton(icon: const Icon(Icons.search, color: Color(0xFF4A4A4A)), onPressed: () {}),
@@ -51,25 +53,33 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
         ],
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true, // HARMONIZED WITH AUDIO TABS
           labelColor: const Color(0xFFFF5E00),
           unselectedLabelColor: const Color(0xFF6B6B6B),
           indicatorColor: const Color(0xFFFF5E00),
           indicatorWeight: 3,
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2),
           unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13, letterSpacing: 1.2),
-          tabs: const [Tab(text: 'FOLDERS'), Tab(text: 'VIDEOS'), Tab(text: 'PLAYLISTS')],
+          tabs: const [Tab(text: 'Folders'), Tab(text: 'Videos'), Tab(text: 'Playlists')],
         ),
       ),
-      body: FutureBuilder<List<FileEntry>>(
-        future: _fetchVideos(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
-          final videos = snapshot.data ?? [];
-          return TabBarView(
-            controller: _tabController,
-            children: [ _buildFoldersList(videos), _buildVideosList(videos), _buildPlaylists() ],
-          );
-        }
+      body: RefreshIndicator(
+        color: const Color(0xFFFF5E00),
+        onRefresh: () async {
+          ref.invalidate(searchDatabaseProvider);
+          setState(() {}); // Triggers FutureBuilder rebuild
+        },
+        child: FutureBuilder<List<FileEntry>>(
+          future: _fetchVideos(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
+            final videos = snapshot.data ?? [];
+            return TabBarView(
+              controller: _tabController,
+              children: [ _buildFoldersList(videos), _buildVideosList(videos), _buildPlaylists() ],
+            );
+          }
+        ),
       ),
     );
   }
@@ -92,7 +102,6 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
         final folderVideos = groupedFolders[path]!;
         
         return InkWell(
-          // NEW NAVIGATION BEHAVIOR
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MediaFolderDetailScreen(folderPath: path, isVideo: true))),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -143,7 +152,18 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
             child: Row(
               children: [
-                Container(width: 110, height: 70, decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(6)), child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 32))),
+                Container(
+                  width: 110, height: 70, 
+                  decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(6)), 
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      FileThumbnailDebug(file: video, adapter: ref.read(storageAdapterProvider), isDirectory: false),
+                      const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 32)),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
