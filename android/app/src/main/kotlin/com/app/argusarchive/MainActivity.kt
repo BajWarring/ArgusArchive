@@ -21,7 +21,7 @@ import java.io.ByteArrayOutputStream
 class MainActivity: FlutterActivity() {
     private val APK_CHANNEL = "com.app.argusarchive/apk_icon"
     private val SHORTCUT_CHANNEL = "com.app.argusarchive/shortcuts"
-    private val MEDIA_CHANNEL = "com.app.argusarchive/media_utils" // NEW THUMBNAIL CHANNEL
+    private val MEDIA_CHANNEL = "com.app.argusarchive/media_utils" 
     private var flutterChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,8 +39,8 @@ class MainActivity: FlutterActivity() {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 }
                 val dynamicShortcut = ShortcutInfo.Builder(this, "video_library_dynamic")
-                    .setShortLabel("Video Player")
-                    .setLongLabel("Open Video Player")
+                    .setShortLabel("Media Player")
+                    .setLongLabel("Open Media Player")
                     .setIcon(Icon.createWithResource(this, R.drawable.ic_launcher_video))
                     .setIntent(shortcutIntent)
                     .build()
@@ -83,7 +83,7 @@ class MainActivity: FlutterActivity() {
                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                             }
                             val pinShortcutInfo = ShortcutInfo.Builder(context, "video_library_pinned")
-                                .setShortLabel("Video Player")
+                                .setShortLabel("Media Player")
                                 .setIcon(Icon.createWithResource(context, R.drawable.ic_launcher_video))
                                 .setIntent(shortcutIntent)
                                 .build()
@@ -100,7 +100,7 @@ class MainActivity: FlutterActivity() {
         }
 
         // ==========================================
-        // FAST NATIVE VIDEO THUMBNAILS
+        // FAST NATIVE MEDIA THUMBNAILS
         // ==========================================
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "getVideoThumbnail") {
@@ -110,24 +110,48 @@ class MainActivity: FlutterActivity() {
                         try {
                             val retriever = MediaMetadataRetriever()
                             retriever.setDataSource(path)
-                            // Pulls a frame 2 seconds in to avoid black starting frames
-                            val bitmap = retriever.getFrameAtTime(2000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            
+                            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            val durationUs = (durationStr?.toLongOrNull() ?: 0L) * 1000
+                            // Extract frame at 30% of video to get a representative colorful frame
+                            val targetTimeUs = if (durationUs > 0) (durationUs * 0.3).toLong() else 2000000L
+
+                            val bitmap = retriever.getFrameAtTime(targetTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                                ?: retriever.getFrameAtTime(2000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                                 ?: retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                            retriever.release()
                             
                             if (bitmap != null) {
                                 val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
-                                val width = 400 // Slightly higher resolution for library grids
+                                val width = 400
                                 val height = (width / ratio).toInt()
                                 val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
                                 
                                 val stream = ByteArrayOutputStream()
                                 scaled.compress(Bitmap.CompressFormat.JPEG, 70, stream)
                                 val bytes = stream.toByteArray()
+                                retriever.release()
                                 Handler(Looper.getMainLooper()).post { result.success(bytes) }
                             } else {
+                                retriever.release()
                                 Handler(Looper.getMainLooper()).post { result.success(null) }
                             }
+                        } catch (e: Exception) {
+                            Handler(Looper.getMainLooper()).post { result.success(null) }
+                        }
+                    }.start()
+                } else {
+                    result.success(null)
+                }
+            } else if (call.method == "getAudioThumbnail") {
+                val path = call.argument<String>("path")
+                if (path != null) {
+                    Thread {
+                        try {
+                            val retriever = MediaMetadataRetriever()
+                            retriever.setDataSource(path)
+                            val bytes = retriever.embeddedPicture
+                            retriever.release()
+                            Handler(Looper.getMainLooper()).post { result.success(bytes) }
                         } catch (e: Exception) {
                             Handler(Looper.getMainLooper()).post { result.success(null) }
                         }
