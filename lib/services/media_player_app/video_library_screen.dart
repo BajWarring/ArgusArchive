@@ -5,6 +5,7 @@ import '../../core/enums/file_type.dart';
 import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../presentation/debug_ui/search_providers.dart';
+import 'media_folder_detail_screen.dart'; // NEW
 
 class VideoLibraryScreen extends ConsumerStatefulWidget {
   const VideoLibraryScreen({super.key});
@@ -34,7 +35,6 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
     final fallback = allFiles.where((f) => 
       ['mp4','mkv','webm','avi'].contains(p.extension(f.path).toLowerCase().replaceAll('.',''))
     ).toList();
-    // Combine both sets and ensure uniqueness
     return {...results, ...fallback}.toList(); 
   }
 
@@ -63,18 +63,11 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
       body: FutureBuilder<List<FileEntry>>(
         future: _fetchVideos(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
           final videos = snapshot.data ?? [];
-          
           return TabBarView(
             controller: _tabController,
-            children: [
-              _buildFoldersList(videos), 
-              _buildVideosList(videos), 
-              _buildPlaylists()
-            ],
+            children: [ _buildFoldersList(videos), _buildVideosList(videos), _buildPlaylists() ],
           );
         }
       ),
@@ -87,12 +80,9 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
       final dir = p.dirname(video.path);
       groupedFolders.putIfAbsent(dir, () => []).add(video);
     }
-
     final folderPaths = groupedFolders.keys.toList()..sort((a,b) => p.basename(a).compareTo(p.basename(b)));
 
-    if (folderPaths.isEmpty) {
-      return const Center(child: Text('No video folders found.', style: TextStyle(color: Colors.grey)));
-    }
+    if (folderPaths.isEmpty) return const Center(child: Text('No video folders found.', style: TextStyle(color: Colors.grey)));
 
     return ListView.builder(
       itemCount: folderPaths.length,
@@ -100,14 +90,10 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
       itemBuilder: (context, index) {
         final path = folderPaths[index];
         final folderVideos = groupedFolders[path]!;
-        final folderName = p.basename(path);
-        final isFirst = index == 0; 
         
         return InkWell(
-          onTap: () {
-            ref.read(currentPathProvider.notifier).state = path;
-            Navigator.pop(context); 
-          },
+          // NEW NAVIGATION BEHAVIOR
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MediaFolderDetailScreen(folderPath: path, isVideo: true))),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             child: Row(
@@ -117,16 +103,7 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
                   decoration: BoxDecoration(color: const Color(0xFFE5E5E5), borderRadius: BorderRadius.circular(8)),
                   child: Stack(
                     children: [
-                      Positioned(
-                        top: 0, left: 0,
-                        child: Container(
-                          width: 25, height: 10,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFE5E5E5),
-                            borderRadius: BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
-                          ),
-                        ),
-                      ),
+                      Positioned(top: 0, left: 0, child: Container(width: 25, height: 10, decoration: const BoxDecoration(color: Color(0xFFE5E5E5), borderRadius: BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8))))),
                       const Center(child: Icon(Icons.folder, color: Color(0xFFB0B0B0))),
                     ],
                   ),
@@ -136,7 +113,7 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(folderName, style: TextStyle(fontSize: 16, color: isFirst ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontWeight: isFirst ? FontWeight.bold : FontWeight.w500)),
+                      Text(p.basename(path), style: TextStyle(fontSize: 16, color: index == 0 ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontWeight: index == 0 ? FontWeight.bold : FontWeight.w500)),
                       const SizedBox(height: 4),
                       Text('${folderVideos.length} video${folderVideos.length > 1 ? 's' : ''}', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
                     ],
@@ -151,33 +128,22 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
   }
 
   Widget _buildVideosList(List<FileEntry> videos) {
-    if (videos.isEmpty) {
-      return const Center(child: Text('No videos found.', style: TextStyle(color: Colors.grey)));
-    }
-
+    if (videos.isEmpty) return const Center(child: Text('No videos found.', style: TextStyle(color: Colors.grey)));
     return ListView.builder(
       itemCount: videos.length,
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemBuilder: (context, index) {
         final video = videos[index];
-        final sizeMb = (video.size / 1024 / 1024).toStringAsFixed(1);
-        final date = '${video.modifiedAt.day}/${video.modifiedAt.month}/${video.modifiedAt.year}';
-        
         return InkWell(
           onTap: () {
             final registry = ref.read(fileHandlerRegistryProvider);
-            final adapter = ref.read(storageAdapterProvider);
-            registry.handlerFor(video)?.open(context, video, adapter);
+            registry.handlerFor(video)?.open(context, video, ref.read(storageAdapterProvider));
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
             child: Row(
               children: [
-                Container(
-                  width: 110, height: 70,
-                  decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(6)),
-                  child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 32)),
-                ),
+                Container(width: 110, height: 70, decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(6)), child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 32))),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -185,19 +151,12 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
                     children: [
                       Text(p.basename(video.path), style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A1A), fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.folder_outlined, size: 14, color: Color(0xFF8E8E8E)),
-                          const SizedBox(width: 4),
-                          Expanded(child: Text(p.basename(p.dirname(video.path)), style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E)), overflow: TextOverflow.ellipsis)),
-                        ],
-                      ),
+                      Row(children: [const Icon(Icons.folder_outlined, size: 14, color: Color(0xFF8E8E8E)), const SizedBox(width: 4), Expanded(child: Text(p.basename(p.dirname(video.path)), style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E)), overflow: TextOverflow.ellipsis))]),
                       const SizedBox(height: 4),
-                      Text('$sizeMb MB  •  $date', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E))),
+                      Text('${(video.size / 1024 / 1024).toStringAsFixed(1)} MB  •  ${video.modifiedAt.day}/${video.modifiedAt.month}', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E))),
                     ],
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF8E8E8E)), onPressed: (){}),
               ],
             ),
           ),
@@ -207,50 +166,6 @@ class _VideoLibraryScreenState extends ConsumerState<VideoLibraryScreen> with Si
   }
 
   Widget _buildPlaylists() {
-    final playlists = [
-      {'name': 'Favorites', 'count': 0, 'icon': Icons.favorite_border},
-      {'name': 'Watch Later', 'count': 0, 'icon': Icons.watch_later_outlined},
-    ];
-
-    return ListView.builder(
-      itemCount: playlists.length + 1, 
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16.0, left: 16.0, right: 16.0),
-            child: InkWell(
-              onTap: () {},
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(8)),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.add, color: Color(0xFFFF5E00)),
-                    SizedBox(width: 8),
-                    Text('Create New Playlist', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 16)),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }
-        final playlist = playlists[index - 1];
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          leading: Container(
-            width: 50, height: 50,
-            decoration: BoxDecoration(color: const Color(0xFFFFF0E6), borderRadius: BorderRadius.circular(8)),
-            child: Icon(playlist['icon'] as IconData, color: const Color(0xFFFF5E00), size: 28),
-          ),
-          title: Text(playlist['name'] as String, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
-          subtitle: Text('${playlist['count']} videos', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
-          trailing: IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF8E8E8E)), onPressed: (){}),
-          onTap: () {},
-        );
-      },
-    );
+    return ListView(children: const [Padding(padding: EdgeInsets.all(16.0), child: Text('Playlists not supported yet.', style: TextStyle(color: Colors.grey)))]);
   }
 }
