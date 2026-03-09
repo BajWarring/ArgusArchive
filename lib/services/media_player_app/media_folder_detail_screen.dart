@@ -62,7 +62,6 @@ class _MediaFolderDetailScreenState extends ConsumerState<MediaFolderDetailScree
               
               return InkWell(
                 onTap: () {
-                  // Add to history explicitly for Audio since it lacks a custom viewer 
                   if (!widget.isVideo) {
                     ref.read(mediaHistoryProvider.notifier).save(
                       MediaHistoryItem(
