@@ -26,7 +26,25 @@ class MoreScreen extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Container(decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(4)), child: ListTile(leading: const Icon(Icons.settings_outlined, color: Color(0xFFFF5E00)), title: const Text('SETTINGS', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)))),
+              child: Container(
+                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(4)), 
+                child: ListTile(
+                  leading: const Icon(Icons.settings_outlined, color: Color(0xFFFF5E00)), 
+                  title: const Text('SETTINGS', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)),
+                  onTap: () {},
+                )
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Container(
+                decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE0E0E0)), borderRadius: BorderRadius.circular(4)), 
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline, color: Color(0xFFFF5E00)), 
+                  title: const Text('ABOUT', style: TextStyle(color: Color(0xFFFF5E00), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)),
+                  onTap: () {},
+                )
+              ),
             ),
             const Padding(padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), child: Divider(color: Color(0xFFE0E0E0))),
             
