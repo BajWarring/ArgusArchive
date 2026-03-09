@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import '../../core/models/file_entry.dart';
 import '../../core/enums/file_type.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../providers/media_history_provider.dart';
+import '../../presentation/debug_ui/file_thumbnail_debug.dart';
 
 class MediaFolderDetailScreen extends ConsumerStatefulWidget {
   final String folderPath;
@@ -38,76 +40,96 @@ class _MediaFolderDetailScreenState extends ConsumerState<MediaFolderDetailScree
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(p.basename(widget.folderPath), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
+    // ENFORCING THE EXACT SAME LIGHT THEME SO IT MATCHES THE MAIN SUB-APP
+    return Theme(
+      data: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
+        primaryColor: const Color(0xFFFF5E00), 
+        colorScheme: const ColorScheme.light(primary: Color(0xFFFF5E00), secondary: Color(0xFFFF5E00)),
+        fontFamily: 'Roboto',
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark, 
+        ),
       ),
-      body: FutureBuilder<List<FileEntry>>(
-        future: _fetchMedia(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
-          }
-          final files = snapshot.data ?? [];
-          if (files.isEmpty) {
-            return const Center(child: Text('No media files found in this folder.', style: TextStyle(color: Colors.grey)));
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: files.length,
-            itemBuilder: (context, index) {
-              final file = files[index];
-              final sizeMb = (file.size / 1024 / 1024).toStringAsFixed(1);
-              final date = '${file.modifiedAt.day}/${file.modifiedAt.month}/${file.modifiedAt.year}';
-              
-              return InkWell(
-                onTap: () {
-                  if (!widget.isVideo) {
-                    ref.read(mediaHistoryProvider.notifier).save(
-                      MediaHistoryItem(
-                        path: file.path,
-                        title: p.basename(file.path),
-                        type: 'audio',
-                        positionMs: 0, durationMs: 0,
-                        lastPlayed: DateTime.now(),
-                      )
-                    );
-                  }
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(p.basename(widget.folderPath), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
+        ),
+        body: FutureBuilder<List<FileEntry>>(
+          future: _fetchMedia(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
+            }
+            final files = snapshot.data ?? [];
+            if (files.isEmpty) {
+              return const Center(child: Text('No media files found in this folder.', style: TextStyle(color: Colors.grey)));
+            }
+            return RefreshIndicator(
+              color: const Color(0xFFFF5E00),
+              onRefresh: () async { setState(() {}); },
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: files.length,
+                itemBuilder: (context, index) {
+                  final file = files[index];
+                  final sizeMb = (file.size / 1024 / 1024).toStringAsFixed(1);
+                  final date = '${file.modifiedAt.day}/${file.modifiedAt.month}/${file.modifiedAt.year}';
                   
-                  final registry = ref.read(fileHandlerRegistryProvider);
-                  final adapter = ref.read(storageAdapterProvider);
-                  registry.handlerFor(file)?.open(context, file, adapter);
+                  return InkWell(
+                    onTap: () {
+                      if (!widget.isVideo) {
+                        ref.read(mediaHistoryProvider.notifier).save(
+                          MediaHistoryItem(path: file.path, title: p.basename(file.path), type: 'audio', positionMs: 0, durationMs: 0, lastPlayed: DateTime.now())
+                        );
+                      }
+                      final registry = ref.read(fileHandlerRegistryProvider);
+                      registry.handlerFor(file)?.open(context, file, ref.read(storageAdapterProvider));
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: widget.isVideo ? 110 : 48, 
+                            height: widget.isVideo ? 70 : 48,
+                            decoration: BoxDecoration(color: widget.isVideo ? const Color(0xFFE0E0E0) : const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(6)),
+                            clipBehavior: Clip.antiAlias,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                FileThumbnailDebug(file: file, adapter: ref.read(storageAdapterProvider), isDirectory: false),
+                                Center(child: Icon(widget.isVideo ? Icons.play_circle_fill : Icons.music_note, color: Colors.white70, size: widget.isVideo ? 32 : 24)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(p.basename(file.path), style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A1A), fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 6),
+                                Text('$sizeMb MB  •  $date', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E))),
+                              ],
+                            ),
+                          ),
+                          IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF8E8E8E)), onPressed: (){}),
+                        ],
+                      ),
+                    ),
+                  );
                 },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: widget.isVideo ? 110 : 48, 
-                        height: widget.isVideo ? 70 : 48,
-                        decoration: BoxDecoration(color: widget.isVideo ? const Color(0xFFE0E0E0) : const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(6)),
-                        child: Center(child: Icon(widget.isVideo ? Icons.play_circle_fill : Icons.music_note, color: Colors.white70, size: widget.isVideo ? 32 : 24)),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(p.basename(file.path), style: const TextStyle(fontSize: 15, color: Color(0xFF1A1A1A), fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 6),
-                            Text('$sizeMb MB  •  $date', style: const TextStyle(fontSize: 12, color: Color(0xFF8E8E8E))),
-                          ],
-                        ),
-                      ),
-                      IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF8E8E8E)), onPressed: (){}),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        }
-      )
+              ),
+            );
+          }
+        )
+      ),
     );
   }
 }
