@@ -7,7 +7,7 @@ import '../../core/models/file_entry.dart';
 import '../../core/interfaces/storage_adapter.dart';
 import '../../core/utils/path_utils.dart';
 import '../../services/media_player_app/video_player_controller.dart'; 
-import '../../providers/media_history_provider.dart'; // NEW
+import '../../providers/media_history_provider.dart'; 
 import 'file_handler.dart';
 
 class VideoHandler implements FileHandler {
@@ -70,7 +70,6 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     super.initState();
     _playPauseAnimController = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    // FREE ROTATION: Allows portrait, reverse portrait, and both landscapes dynamically
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     _startHideTimer();
   }
@@ -80,8 +79,11 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     setState(() => _ctrl = ctrl);
     ctrl.stateStream.listen((state) {
       if (!mounted) return;
-      if (state.isPlaying && _playPauseAnimController.status != AnimationStatus.forward) _playPauseAnimController.forward();
-      else if (!state.isPlaying && _playPauseAnimController.status != AnimationStatus.reverse) _playPauseAnimController.reverse();
+      if (state.isPlaying && _playPauseAnimController.status != AnimationStatus.forward) {
+        _playPauseAnimController.forward();
+      } else if (!state.isPlaying && _playPauseAnimController.status != AnimationStatus.reverse) {
+        _playPauseAnimController.reverse();
+      }
       setState(() {}); 
     });
     _loadHistorySettings();
@@ -107,7 +109,6 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     _hideTimer?.cancel();
     _overlayTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    // RESTORE PORTRAIT ON EXIT
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
@@ -117,7 +118,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     final item = MediaHistoryItem(
       path: widget.entry.path,
       title: PathUtils.getName(widget.entry.path),
-      type: 'video', // NEW
+      type: 'video', 
       positionMs: _ctrl!.value.position.inMilliseconds,
       durationMs: _ctrl!.value.duration.inMilliseconds,
       audioDelayMs: _audioDelayMs,
@@ -156,8 +157,8 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     if (details.pointerCount == 1) {
       final dx = details.focalPointDelta.dx; final dy = details.focalPointDelta.dy;
       if (_currentGesture == GestureType.none) {
-        if (dx.abs() > dy.abs() && dx.abs() > 1.5) _currentGesture = GestureType.seek;
-        else if (dy.abs() > 1.5) _currentGesture = details.focalPoint.dx < MediaQuery.of(context).size.width / 2 ? GestureType.volume : GestureType.brightness;
+        if (dx.abs() > dy.abs() && dx.abs() > 1.5) { _currentGesture = GestureType.seek; }
+        else if (dy.abs() > 1.5) { _currentGesture = details.focalPoint.dx < MediaQuery.of(context).size.width / 2 ? GestureType.volume : GestureType.brightness; }
       }
       setState(() {
         if (_currentGesture == GestureType.seek) { _accumulatedSeekSeconds += dx * 0.2; _activeOverlay = 'seek'; }
@@ -176,7 +177,7 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
     _currentGesture = GestureType.none;
     _overlayTimer?.cancel();
     _overlayTimer = Timer(const Duration(milliseconds: 800), () { if (mounted) setState(() => _activeOverlay = ''); });
-    if (_ctrl!.value.isPlaying) _startHideTimer();
+    if (_ctrl!.value.isPlaying) { _startHideTimer(); }
   }
 
   void _handleDoubleTapDown(TapDownDetails details) {
@@ -362,7 +363,6 @@ class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> with Tick
                         setState(() {
                           _isOrientationLocked = !_isOrientationLocked;
                           if (_isOrientationLocked) {
-                            // Lock to current physical orientation
                             final orientation = MediaQuery.of(context).orientation;
                             if (orientation == Orientation.landscape) {
                               SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
@@ -498,10 +498,11 @@ class _TriangleArrowsState extends State<_TriangleArrows> with SingleTickerProvi
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (index) {
             double fade = (_ctrl.value - (index * 0.2)) * 3;
-            if (fade < 0) fade = 0; if (fade > 1) fade = 1 - (fade - 1);
+            if (fade < 0) { fade = 0; }
+            if (fade > 1) { fade = 1 - (fade - 1); }
             fade = fade.clamp(0.0, 1.0);
             Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withValues(alpha: fade), size: 48);
-            if (!widget.isForward) arrow = Transform.rotate(angle: pi, child: arrow);
+            if (!widget.isForward) { arrow = Transform.rotate(angle: pi, child: arrow); }
             return arrow; 
           }).toList()..replaceRange(0, 3, widget.isForward ? [_buildFadingTriangle(0), _buildFadingTriangle(1), _buildFadingTriangle(2)] : [_buildFadingTriangle(2), _buildFadingTriangle(1), _buildFadingTriangle(0)]),
         );
@@ -511,10 +512,11 @@ class _TriangleArrowsState extends State<_TriangleArrows> with SingleTickerProvi
   
   Widget _buildFadingTriangle(int index) {
     double fade = (_ctrl.value - (index * 0.2)) * 3;
-    if (fade < 0) fade = 0; if (fade > 1) fade = 2 - fade;
+    if (fade < 0) { fade = 0; }
+    if (fade > 1) { fade = 2 - fade; }
     fade = fade.clamp(0.0, 1.0);
     Widget arrow = Icon(Icons.play_arrow, color: Colors.white.withValues(alpha: fade), size: 48);
-    if (!widget.isForward) arrow = Transform.rotate(angle: pi, child: arrow);
+    if (!widget.isForward) { arrow = Transform.rotate(angle: pi, child: arrow); }
     return arrow;
   }
 }
