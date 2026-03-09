@@ -5,8 +5,8 @@ import '../../core/enums/file_type.dart';
 import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../presentation/debug_ui/search_providers.dart';
-import '../../providers/media_history_provider.dart'; // NEW
-import 'media_folder_detail_screen.dart'; // NEW
+import '../../providers/media_history_provider.dart';
+import 'media_folder_detail_screen.dart'; // REQUIRED IMPORT FOR NAVIGATION
 
 class AudioLibraryScreen extends ConsumerStatefulWidget {
   const AudioLibraryScreen({super.key});
@@ -53,7 +53,9 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
       body: FutureBuilder<List<FileEntry>>(
         future: _fetchAudio(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
+          }
           final audios = snapshot.data ?? [];
           return TabBarView(
             controller: _tabController,
@@ -65,7 +67,9 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
   }
 
   Widget _buildTracksList(List<FileEntry> audios) {
-    if (audios.isEmpty) return const Center(child: Text('No audio files found.'));
+    if (audios.isEmpty) {
+      return const Center(child: Text('No audio files found.'));
+    }
     return ListView.builder(
       itemCount: audios.length,
       itemBuilder: (context, index) {
@@ -76,7 +80,6 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
           title: Text(p.basename(audio.path), style: TextStyle(color: index == 0 ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontSize: 16, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(p.basename(p.dirname(audio.path)), style: TextStyle(color: index == 0 ? const Color(0xFFFF5E00) : const Color(0xFF8E8E8E), fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
           onTap: () {
-            // Save to audio history explicitly
             ref.read(mediaHistoryProvider.notifier).save(MediaHistoryItem(path: audio.path, title: p.basename(audio.path), type: 'audio', positionMs: 0, durationMs: 0, lastPlayed: DateTime.now()));
             ref.read(fileHandlerRegistryProvider).handlerFor(audio)?.open(context, audio, ref.read(storageAdapterProvider));
           },
@@ -87,7 +90,9 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
 
   Widget _buildGroupedList(List<FileEntry> audios, String title, IconData icon) {
     final Map<String, int> groups = {};
-    for (var a in audios) groups[p.basename(p.dirname(a.path))] = (groups[p.basename(p.dirname(a.path))] ?? 0) + 1;
+    for (var a in audios) {
+      groups[p.basename(p.dirname(a.path))] = (groups[p.basename(p.dirname(a.path))] ?? 0) + 1;
+    }
     final keys = groups.keys.toList()..sort();
     return ListView.builder(
       itemCount: keys.length,
@@ -106,7 +111,9 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
 
   Widget _buildAudioFolders(List<FileEntry> audios) {
     final Map<String, int> folderCounts = {};
-    for (var a in audios) folderCounts[p.dirname(a.path)] = (folderCounts[p.dirname(a.path)] ?? 0) + 1;
+    for (var a in audios) {
+      folderCounts[p.dirname(a.path)] = (folderCounts[p.dirname(a.path)] ?? 0) + 1;
+    }
     final paths = folderCounts.keys.toList()..sort();
 
     return ListView.builder(
@@ -119,7 +126,6 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
           leading: Container(width: 65, height: 50, decoration: BoxDecoration(color: const Color(0xFFE5E5E5), borderRadius: BorderRadius.circular(8)), child: const Center(child: Icon(Icons.folder, color: Colors.white70))),
           title: Text(p.basename(path), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFF1A1A1A))),
           subtitle: Text('${folderCounts[path]} songs', style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E8E))),
-          // NEW NAVIGATION BEHAVIOR
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MediaFolderDetailScreen(folderPath: path, isVideo: false))),
         );
       },
