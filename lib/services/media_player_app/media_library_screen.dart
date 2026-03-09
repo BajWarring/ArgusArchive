@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'video_library_screen.dart';
 import 'audio_library_screen.dart';
 import 'more_menu_screen.dart';
@@ -34,6 +35,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           backgroundColor: Colors.white,
           foregroundColor: Colors.black87,
           elevation: 0,
+          // ENFORCES STATUS BAR VISIBILITY WITH DARK ICONS
+          systemOverlayStyle: SystemUiOverlayStyle.dark, 
         ),
       ),
       child: Scaffold(
