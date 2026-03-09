@@ -6,7 +6,8 @@ import '../../core/models/file_entry.dart';
 import '../../presentation/debug_ui/providers.dart';
 import '../../presentation/debug_ui/search_providers.dart';
 import '../../providers/media_history_provider.dart';
-import 'media_folder_detail_screen.dart'; // REQUIRED IMPORT FOR NAVIGATION
+import '../../presentation/debug_ui/file_thumbnail_debug.dart';
+import 'media_folder_detail_screen.dart'; 
 
 class AudioLibraryScreen extends ConsumerStatefulWidget {
   const AudioLibraryScreen({super.key});
@@ -40,35 +41,48 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false, // REMOVES BACK BUTTON
         title: const Text('Audio Player', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
         actions: [
           IconButton(icon: const Icon(Icons.search, color: Color(0xFF4A4A4A)), onPressed: () {}),
           IconButton(icon: const Icon(Icons.more_vert, color: Color(0xFF4A4A4A)), onPressed: () {}),
         ],
         bottom: TabBar(
-          controller: _tabController, isScrollable: true, labelColor: const Color(0xFFFF5E00), unselectedLabelColor: const Color(0xFF6B6B6B), indicatorColor: const Color(0xFFFF5E00), indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          controller: _tabController, 
+          isScrollable: true, 
+          labelColor: const Color(0xFFFF5E00), 
+          unselectedLabelColor: const Color(0xFF6B6B6B), 
+          indicatorColor: const Color(0xFFFF5E00), 
+          indicatorWeight: 3, 
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13, letterSpacing: 1.2),
           tabs: const [Tab(text: 'Tracks'), Tab(text: 'Playlists'), Tab(text: 'Albums'), Tab(text: 'Artists'), Tab(text: 'Folders')],
         ),
       ),
-      body: FutureBuilder<List<FileEntry>>(
-        future: _fetchAudio(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
+      body: RefreshIndicator(
+        color: const Color(0xFFFF5E00),
+        onRefresh: () async {
+          ref.invalidate(searchDatabaseProvider);
+          setState(() {});
+        },
+        child: FutureBuilder<List<FileEntry>>(
+          future: _fetchAudio(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFFFF5E00)));
+            final audios = snapshot.data ?? [];
+            return TabBarView(
+              controller: _tabController,
+              children: [ _buildTracksList(audios), const Center(child: Text('Playlists not supported yet')), _buildGroupedList(audios, 'Albums', Icons.album), _buildGroupedList(audios, 'Artists', Icons.person), _buildAudioFolders(audios) ],
+            );
           }
-          final audios = snapshot.data ?? [];
-          return TabBarView(
-            controller: _tabController,
-            children: [ _buildTracksList(audios), const Center(child: Text('Playlists not supported yet')), _buildGroupedList(audios, 'Albums', Icons.album), _buildGroupedList(audios, 'Artists', Icons.person), _buildAudioFolders(audios) ],
-          );
-        }
+        ),
       ),
     );
   }
 
   Widget _buildTracksList(List<FileEntry> audios) {
     if (audios.isEmpty) {
-      return const Center(child: Text('No audio files found.'));
+      return ListView(children: const [Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('No audio files found.')))]);
     }
     return ListView.builder(
       itemCount: audios.length,
@@ -76,7 +90,18 @@ class _AudioLibraryScreenState extends ConsumerState<AudioLibraryScreen> with Si
         final audio = audios[index];
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: Container(width: 48, height: 48, decoration: BoxDecoration(color: const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(6)), child: const Center(child: Icon(Icons.music_note, color: Colors.white, size: 24))),
+          leading: Container(
+            width: 48, height: 48, 
+            decoration: BoxDecoration(color: const Color(0xFF2C3E50), borderRadius: BorderRadius.circular(6)), 
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                FileThumbnailDebug(file: audio, adapter: ref.read(storageAdapterProvider), isDirectory: false),
+                const Center(child: Icon(Icons.music_note, color: Colors.white70, size: 24)),
+              ],
+            ),
+          ),
           title: Text(p.basename(audio.path), style: TextStyle(color: index == 0 ? const Color(0xFFFF5E00) : const Color(0xFF1A1A1A), fontSize: 16, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(p.basename(p.dirname(audio.path)), style: TextStyle(color: index == 0 ? const Color(0xFFFF5E00) : const Color(0xFF8E8E8E), fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
           onTap: () {
