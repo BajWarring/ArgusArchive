@@ -74,10 +74,12 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> {
         _progress = 1.0;
       });
       widget.onComplete();
+      
+      // FIXED: Capture the navigator before the async delay
+      final nav = Navigator.of(context);
       Future.delayed(const Duration(milliseconds: 500), () {
-        // FIXED: Explicitly use context.mounted within closure to avoid async gap
-        if (context.mounted) {
-          Navigator.of(context).pop();
+        if (mounted) {
+          nav.pop();
         }
       });
     }
@@ -98,10 +100,12 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> {
       onHide: () => Navigator.of(context).pop(),
       onCancel: () {
         setState(() => _isCanceled = true);
+        
+        // FIXED: Capture the navigator before the async delay
+        final nav = Navigator.of(context);
         Future.delayed(const Duration(seconds: 1), () { 
-          // FIXED: Async gap check
-          if (context.mounted) {
-            Navigator.of(context).pop(); 
+          if (mounted) {
+            nav.pop(); 
           }
         });
       },
