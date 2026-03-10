@@ -36,7 +36,39 @@ class FileActionHandlerDebug {
       ref.read(clipboardProvider.notifier).state = ClipboardState(paths: paths, action: ClipboardAction.cut);
       ref.read(selectedFilesProvider.notifier).state = {};
     } else if (action == 'delete') {
-      FileDialogsDebug.showDeleteConfirmation(context, ref, paths);
+      // NEW: Show standard confirmation, then trigger Popup UI for deletion
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Move to Trash'),
+          content: Text('Are you sure you want to move ${paths.length} items to the trash?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+          ],
+        ),
+      );
+
+      if (confirmed == true && context.mounted) {
+        StandaloneOperationPopup.show(
+          context: context,
+          title: 'Deleting',
+          destination: 'Trash',
+          action: (onProgress, cancelToken) async {
+            for (int i = 0; i < paths.length; i++) {
+              if (cancelToken.value) return false;
+              onProgress(i / paths.length, p.basename(paths[i]));
+              await FileOperationsService.deleteEntity(paths[i]);
+              await Future.delayed(Duration.zero); // Yield to keep UI active
+            }
+            return true;
+          },
+          onComplete: () {
+            ref.read(selectedFilesProvider.notifier).state = {};
+            ref.invalidate(directoryContentsProvider);
+          },
+        );
+      }
     } else if (action == 'compress') {
       final defaultName = paths.length == 1 ? p.basenameWithoutExtension(paths.first) : 'Archive';
       final result = await FileDialogsDebug.showCompressDialog(context, defaultName);
@@ -49,7 +81,7 @@ class FileActionHandlerDebug {
           context: context,
           title: 'Compressing',
           destination: dest,
-          action: (onProgress) => ArchiveService.compressEntities(paths, dest, format: ext.replaceAll('.', ''), onProgress: onProgress),
+          action: (onProgress, cancelToken) => ArchiveService.compressEntities(paths, dest, format: ext.replaceAll('.', ''), onProgress: onProgress, cancelToken: cancelToken),
           onComplete: () {
             ref.read(selectedFilesProvider.notifier).state = {};
             ref.invalidate(directoryContentsProvider);
@@ -112,9 +144,9 @@ class FileActionHandlerDebug {
         context: context,
         title: 'Extracting',
         destination: destDir,
-        action: (onProgress) async {
-          bool success = await ArchiveService.extractZip(zipPath, tempExtractDir, onProgress: onProgress);
-          if (success) {
+        action: (onProgress, cancelToken) async {
+          bool success = await ArchiveService.extractZip(zipPath, tempExtractDir, onProgress: onProgress, cancelToken: cancelToken);
+          if (success && !cancelToken.value) {
             final allExtractedFiles = Directory(tempExtractDir).listSync(recursive: true).whereType<File>().toList();
             bool applyToAll = false;
             String? bulkAction;
@@ -129,7 +161,7 @@ class FileActionHandlerDebug {
                 if (applyToAll && bulkAction != null) {
                   action = bulkAction;
                 } else {
-                  if (!context.mounted) return; 
+                  if (!context.mounted) return false; 
                   // ignore: use_build_context_synchronously
                   final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, tempFile.path);
                   if (result == null) break;
@@ -144,6 +176,7 @@ class FileActionHandlerDebug {
             }
           }
           if (Directory(tempExtractDir).existsSync()) { await Directory(tempExtractDir).delete(recursive: true); }
+          return success;
         },
         onComplete: () {
           ref.read(clipboardProvider.notifier).state = ClipboardState();
