@@ -54,8 +54,8 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> wit
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // Listen for cancel taps from the Notification
-    _notifSub = NotificationService.actionStream.listen((payload) {
+    // FIXED: Listen to the .stream of the StreamController
+    _notifSub = NotificationService.actionStream.stream.listen((payload) {
       if (payload == widget.operationId) _handleCancel();
     });
 
@@ -150,7 +150,7 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> wit
       onHide: () {
         setState(() => _isHidden = true);
         _updateNotification();
-        Navigator.of(context).pop(); // Pops UI but future keeps running
+        Navigator.of(context).pop(); 
       },
       onCancel: _handleCancel,
     );
