@@ -17,31 +17,21 @@ class NotificationService {
         }
       },
     );
-
-    // Request permissions for Android 13+
     await _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
   }
 
   static Future<void> showProgressNotification({
-    required int id,
-    required String title,
-    required String body,
-    required int progress,
-    required String payload,
+    required int id, required String title, required String body, required int progress, required String payload,
   }) async {
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'op_progress_channel',
-      'File Operations',
-      channelDescription: 'Shows progress for file operations like copy, move, and compress.',
-      importance: Importance.low,
-      priority: Priority.low,
-      showProgress: true,
-      maxProgress: 100,
-      progress: progress,
-      ongoing: true,
-      onlyAlertOnce: true,
+      'op_progress_channel', 'File Operations',
+      channelDescription: 'Shows progress for file operations.',
+      importance: Importance.low, priority: Priority.low,
+      showProgress: true, maxProgress: 100, progress: progress,
+      ongoing: true, onlyAlertOnce: true,
+      enableVibration: false, // REMOVED HAPTICS/VIBRATION
+      playSound: false,       // SILENT
       actions: <AndroidNotificationAction>[
-        const AndroidNotificationAction('open_op', 'Open', showsUserInterface: true),
         const AndroidNotificationAction('cancel_op', 'Cancel', showsUserInterface: false),
       ],
     );
@@ -54,6 +44,8 @@ class NotificationService {
       'op_complete_channel', 'Operation Alerts',
       importance: Importance.high, priority: Priority.high,
       ongoing: false, autoCancel: true,
+      enableVibration: false, // REMOVED HAPTICS/VIBRATION
+      playSound: false,       // SILENT
     );
     await _plugin.show(id, title, body, const NotificationDetails(android: androidDetails));
   }
