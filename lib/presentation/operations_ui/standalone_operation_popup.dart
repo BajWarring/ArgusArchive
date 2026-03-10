@@ -54,7 +54,6 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> wit
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // FIXED: Listen to the .stream of the StreamController
     _notifSub = NotificationService.actionStream.stream.listen((payload) {
       if (payload == widget.operationId) _handleCancel();
     });
@@ -74,6 +73,8 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> wit
     _isBackground = (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.hidden);
     if (!_isBackground && _isHidden && !_isComplete && !_isCanceled) {
       NotificationService.cancelNotification(_notifId);
+    } else if (_isBackground) {
+      _updateNotification();
     }
   }
 
