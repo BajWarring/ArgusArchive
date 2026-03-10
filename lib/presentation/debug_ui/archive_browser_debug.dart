@@ -2,11 +2,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import '../../services/operations/archive_service.dart';
+import '../operations_ui/standalone_operation_popup.dart';
 
 class ArchiveBrowserScreen extends StatefulWidget {
   final String archivePath;
   const ArchiveBrowserScreen({super.key, required this.archivePath});
-
   @override
   State<ArchiveBrowserScreen> createState() => _ArchiveBrowserScreenState();
 }
@@ -70,7 +70,7 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
   Future<void> _showExtractDialog(List<String> entryPaths) async {
     final defaultDest = p.dirname(widget.archivePath);
     final controller = TextEditingController(text: defaultDest);
-
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -89,45 +89,31 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
         ],
       ),
     );
-
+    
     if (confirmed != true || !mounted) return;
 
-    double prog = 0;
-    String curFile = '';
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          title: const Text('Extracting...'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(curFile, style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 12),
-              LinearProgressIndicator(value: prog, color: Colors.teal),
-              const SizedBox(height: 8),
-              Text('${(prog * 100).toStringAsFixed(0)}%'),
-            ],
-          ),
-        ),
-      ),
-    );
-
     int done = 0;
-    for (final entryPath in entryPaths) {
-      await ArchiveService.extractSingleEntry(widget.archivePath, entryPath, controller.text);
-      done++;
-      prog = done / entryPaths.length;
-    }
-
-    if (mounted) {
-      Navigator.of(context).pop();
-      setState(() => _selected.clear());
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Extracted ${entryPaths.length} item(s) to ${controller.text}'), backgroundColor: Colors.teal),
-      );
-    }
+    // --- NEW POPUP UI SYSTEM ---
+    StandaloneOperationPopup.show(
+      context: context,
+      title: 'Extracting',
+      destination: controller.text,
+      action: (onProgress) async {
+        for (final entryPath in entryPaths) {
+          await ArchiveService.extractSingleEntry(widget.archivePath, entryPath, controller.text);
+          done++;
+          onProgress(done / entryPaths.length, p.basename(entryPath));
+        }
+      },
+      onComplete: () {
+        if (mounted) {
+          setState(() => _selected.clear());
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Extracted ${entryPaths.length} item(s) to ${controller.text}'), backgroundColor: Colors.teal),
+          );
+        }
+      },
+    );
   }
 
   Future<void> _previewEntry(ArchiveEntryInfo entry) async {
@@ -146,10 +132,7 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
           content: Text('No previewer for .$ext files.\nSize: ${_formatSize(entry.size)}'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () { Navigator.pop(ctx); _extractEntry(entry); },
-              child: const Text('Extract'),
-            ),
+            ElevatedButton(onPressed: () { Navigator.pop(ctx); _extractEntry(entry); }, child: const Text('Extract')),
           ],
         ),
       );
@@ -160,11 +143,9 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
       context: context, barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
-
     final bytes = await ArchiveService.readArchiveEntry(widget.archivePath, entry.fullPath);
     if (!mounted) return;
     Navigator.of(context).pop();
-
     if (bytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to read file from archive')));
       return;
@@ -231,17 +212,11 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
               IconButton(icon: const Icon(Icons.download), tooltip: 'Extract selected', onPressed: _extractSelected),
               IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _selected.clear())),
             ] else ...[
-              IconButton(
-                icon: const Icon(Icons.info_outline),
-                onPressed: () => _showArchiveInfo(),
-              ),
+              IconButton(icon: const Icon(Icons.info_outline), onPressed: () => _showArchiveInfo()),
               PopupMenuButton<String>(
                 onSelected: (v) {
-                  if (v == 'extract_all') {
-                    _showExtractDialog(_entries.map((e) => e.fullPath).toList());
-                  } else if (v == 'test') {
-                    _testIntegrity();
-                  }
+                  if (v == 'extract_all') { _showExtractDialog(_entries.map((e) => e.fullPath).toList()); } 
+                  else if (v == 'test') { _testIntegrity(); }
                 },
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: 'extract_all', child: Row(children: [Icon(Icons.unarchive), SizedBox(width: 8), Text('Extract All')])),
