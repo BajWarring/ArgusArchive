@@ -4,19 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'presentation/splash_ui/root_navigator.dart';
 import 'services/sub_app/shortcut_service.dart';
 import 'services/media_player_app/media_library_screen.dart'; 
+import 'services/notifications/notification_service.dart'; // NEW IMPORT
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // FORCE APP INTO PORTRAIT BY DEFAULT
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  
+  await NotificationService.init(); // INITIALIZE NOTIFICATIONS
+
   runApp(
     const ProviderScope(
       child: ArgusArchiveApp(),
     ),
   );
 }
+
 
 class ArgusArchiveApp extends StatefulWidget {
   const ArgusArchiveApp({super.key});
