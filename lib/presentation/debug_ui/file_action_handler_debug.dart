@@ -14,7 +14,6 @@ import '../../services/sub_app/shortcut_service.dart';
 import '../operations_ui/transfer_queue_popup.dart';
 import '../operations_ui/standalone_operation_popup.dart';
 import 'providers.dart';
-import 'header_icons_debug.dart';
 import 'file_dialog_debug.dart';
 
 class FileActionHandlerDebug {
@@ -46,7 +45,6 @@ class FileActionHandlerDebug {
         final dest = p.join(p.dirname(paths.first), '${result['name']}.$ext');
         if (!context.mounted) return;
         
-        // --- NEW POPUP SYSTEM FOR COMPRESSION ---
         StandaloneOperationPopup.show(
           context: context,
           title: 'Compressing',
@@ -110,7 +108,6 @@ class FileActionHandlerDebug {
 
     List<String> queuedTaskIds = [];
 
-    // EXTRACT
     if (clipboard.action == ClipboardAction.extract) {
       final zipPath = clipboard.paths.first;
       final tempExtractDir = p.join(destDir, '.temp_extract_${DateTime.now().millisecondsSinceEpoch}');
@@ -118,7 +115,6 @@ class FileActionHandlerDebug {
 
       if (!context.mounted) return;
 
-      // --- NEW POPUP SYSTEM FOR EXTRACTION ---
       StandaloneOperationPopup.show(
         context: context,
         title: 'Extracting',
@@ -140,7 +136,8 @@ class FileActionHandlerDebug {
                 if (applyToAll && bulkAction != null) {
                   action = bulkAction;
                 } else {
-                  // Dialog requires valid context, safe fallback for async blocks
+                  // FIXED: Added missing mounted check here!
+                  if (!context.mounted) return; 
                   final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, tempFile.path);
                   if (result == null) break;
                   action = result['action'];
@@ -163,7 +160,6 @@ class FileActionHandlerDebug {
       return;
     }
 
-    // COPY/MOVE
     bool applyToAll = false;
     String? bulkAction;
     for (int i = 0; i < clipboard.paths.length; i++) {
@@ -179,6 +175,7 @@ class FileActionHandlerDebug {
           if (applyToAll && bulkAction != null) {
             action = bulkAction;
           } else {
+            // FIXED: Ensure mounted before calling collision dialog
             if (!context.mounted) return;
             final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
             if (result == null) break;
@@ -205,7 +202,6 @@ class FileActionHandlerDebug {
 
     if (queuedTaskIds.isNotEmpty) {
       if (!context.mounted) return;
-      // --- TRIGGER THE TRANSFER QUEUE ANIMATED POPUP ---
       TransferQueuePopup.show(context, queuedTaskIds);
     }
 
