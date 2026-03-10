@@ -10,7 +10,7 @@ import '../operations_ui/standalone_operation_popup.dart';
 import 'providers.dart';
 import 'file_dialog_debug.dart';
 import 'archive_browser_debug.dart';
-import 'file_action_handler_debug.dart'; // FIXED: Added missing import
+import 'file_action_handler_debug.dart';
 
 class FileBottomSheetsDebug {
 
@@ -197,9 +197,10 @@ class FileBottomSheetsDebug {
                       final ext  = result['format']!;
                       final dest = p.join(p.dirname(filePath), '${result['name']}.$ext');
                       if (!context.mounted) return;
+                      // FIXED: Added cancelToken parameter
                       StandaloneOperationPopup.show(
                         context: context, title: 'Compressing', destination: dest,
-                        action: (onProgress) => ArchiveService.compressEntities(targetPaths, dest, format: ext.replaceAll('.', ''), onProgress: onProgress),
+                        action: (onProgress, cancelToken) => ArchiveService.compressEntities(targetPaths, dest, format: ext.replaceAll('.', ''), onProgress: onProgress, cancelToken: cancelToken),
                         onComplete: () { ref.read(selectedFilesProvider.notifier).state = {}; ref.invalidate(directoryContentsProvider); },
                       );
                     }
@@ -223,7 +224,8 @@ class FileBottomSheetsDebug {
       context: context,
       title: 'Extracting',
       destination: destPath,
-      action: (onProgress) => ArchiveService.extractZip(zipPath, destPath, onProgress: onProgress),
+      // FIXED: Added cancelToken parameter
+      action: (onProgress, cancelToken) => ArchiveService.extractZip(zipPath, destPath, onProgress: onProgress, cancelToken: cancelToken),
       onComplete: () => ref.invalidate(directoryContentsProvider),
     );
   }
