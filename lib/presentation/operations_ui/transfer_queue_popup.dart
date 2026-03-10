@@ -87,7 +87,10 @@ class TransferQueuePopup extends ConsumerWidget {
           onHide: () => Navigator.of(context).pop(),
           onCancel: () {
             final queue = ref.read(transferQueueProvider);
-            for (var task in myTasks) queue.cancel(task.id);
+            // FIXED: Added {} to loop
+            for (var task in myTasks) {
+               queue.cancel(task.id);
+            }
           },
         );
       }
