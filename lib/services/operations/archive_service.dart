@@ -38,7 +38,9 @@ class ArchiveService {
   // ===========================================================================
   // HELPERS
   // ===========================================================================
-  static bool isArchiveFile(String path) {
+  
+  // FIXED: Changed to Future<bool> and added 'async' to satisfy the await in file_browser
+  static Future<bool> isArchiveFile(String path) async {
     final ext = p.extension(path).toLowerCase();
     return ['.zip', '.rar', '.7z', '.tar', '.gz'].contains(ext);
   }
@@ -68,7 +70,6 @@ class ArchiveService {
       onProgress(0.0, "Calculating size...");
       await Future.delayed(const Duration(milliseconds: 100)); // Yield thread
 
-      // 1. Calculate totals to fix the 0% bug
       for (String path in paths) {
         if (cancelToken.value) return false;
         if (await FileSystemEntity.isDirectory(path)) {
@@ -91,7 +92,6 @@ class ArchiveService {
       final encoder = ZipFileEncoder();
       encoder.create(dest);
 
-      // 2. Compress with UI yields and Cancellation checks
       for (var file in filesToZip) {
         if (cancelToken.value) {
           encoder.close();
@@ -102,7 +102,6 @@ class ArchiveService {
         final relativePath = _getRelativePath(paths, file.path);
         onProgress(processedBytes / totalBytes, p.basename(file.path));
         
-        // YIELD TO UI TO UPDATE PROGRESS BAR
         await Future.delayed(Duration.zero); 
         
         encoder.addFile(file, relativePath);
@@ -148,7 +147,6 @@ class ArchiveService {
         processed++;
         onProgress(processed / totalFiles, filename);
         
-        // YIELD TO UI to keep animation smooth
         if (processed % 5 == 0) await Future.delayed(Duration.zero); 
       }
       return true;
