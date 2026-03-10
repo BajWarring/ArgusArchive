@@ -12,6 +12,8 @@ class OperationPopupCard extends StatelessWidget {
   final String speedText;
   final bool isAnimating;
   final bool isCanceled;
+  final bool isFailed;
+  final String? errorMessage;
   final VoidCallback onHide;
   final VoidCallback onCancel;
 
@@ -26,12 +28,17 @@ class OperationPopupCard extends StatelessWidget {
     required this.speedText,
     required this.isAnimating,
     required this.isCanceled,
+    this.isFailed = false,
+    this.errorMessage,
     required this.onHide,
     required this.onCancel,
   });
 
   @override
   Widget build(BuildContext context) {
+    final titleColor = isFailed ? const Color(0xFFE11D48) : (isCanceled ? const Color(0xFFE11D48) : const Color(0xFF1E293B));
+    final barColor = isFailed || isCanceled ? const Color(0xFFE11D48) : const Color(0xFF06B6D4);
+
     return Container(
       width: 384,
       padding: const EdgeInsets.all(16),
@@ -55,11 +62,11 @@ class OperationPopupCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: isCanceled ? const Color(0xFFE11D48) : const Color(0xFF1E293B),
+                      color: titleColor,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  if (isAnimating && !isCanceled) const PulsingDots(),
+                  if (isAnimating && !isCanceled && !isFailed) const PulsingDots(),
                 ],
               ),
               Row(
@@ -87,7 +94,9 @@ class OperationPopupCard extends StatelessWidget {
             padding: const EdgeInsets.all(8),
             child: AspectRatio(
               aspectRatio: 800 / 210, 
-              child: VoyagerProgress(progress: progress, isAnimating: isAnimating),
+              child: isFailed || isCanceled 
+                  ? CustomPaint(painter: StaticBarPainter(progress: progress, color: barColor)) 
+                  : VoyagerProgress(progress: progress, isAnimating: isAnimating),
             ),
           ),
 
@@ -109,7 +118,7 @@ class OperationPopupCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        if (isAnimating && !isCanceled)
+                        if (isAnimating && !isCanceled && !isFailed)
                           const Padding(
                             padding: EdgeInsets.only(right: 6),
                             child: SizedBox(
@@ -119,10 +128,14 @@ class OperationPopupCard extends StatelessWidget {
                           ),
                         Expanded(
                           child: Text(
-                            currentFile,
+                            isFailed ? (errorMessage ?? 'Operation failed') : currentFile,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Color(0xFF94A3B8)),
+                            style: TextStyle(
+                              fontSize: 10, 
+                              fontFamily: 'monospace', 
+                              color: isFailed ? const Color(0xFFE11D48) : const Color(0xFF94A3B8)
+                            ),
                           ),
                         ),
                       ],
@@ -142,21 +155,23 @@ class OperationPopupCard extends StatelessWidget {
                       side: const BorderSide(color: Color(0xFFE2E8F0)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                     ),
-                    child: const Text("Hide", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    child: Text(isCanceled || isFailed || progress >= 1.0 ? "Close" : "Hide", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: onCancel,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      minimumSize: Size.zero,
-                      backgroundColor: const Color(0xFF1E293B),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  if (!isCanceled && !isFailed && progress < 1.0) ...[
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: onCancel,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        minimumSize: Size.zero,
+                        backgroundColor: const Color(0xFF1E293B),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      child: const Text("Cancel", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     ),
-                    child: const Text("Cancel", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                  ),
+                  ]
                 ],
               )
             ],
@@ -165,6 +180,28 @@ class OperationPopupCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class StaticBarPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  StaticBarPainter({required this.progress, required this.color});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save(); 
+    canvas.scale(size.width / 800.0, size.height / 210.0);
+    
+    Paint bg = Paint()..color = const Color(0xFFE2E8F0)..style = PaintingStyle.stroke..strokeWidth = 6.0..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(50, 100), const Offset(750, 100), bg);
+    
+    Paint fg = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 6.0..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(50, 100), Offset(50 + (700 * progress), 100), fg);
+    
+    canvas.restore();
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class PulsingDots extends StatefulWidget {
@@ -268,7 +305,6 @@ class VoyagerPainter extends CustomPainter {
 
     Paint bgPaint = Paint()..color = const Color(0xFFE2E8F0)..style = PaintingStyle.stroke..strokeWidth = 6.0..strokeCap = StrokeCap.round;
     Path bgPath = Path()..moveTo(waveStartX, getWaveY(waveStartX, waveOffset));
-    // FIXED: Added {} to loop
     for (double x = waveStartX + 5; x <= waveEndX; x += 5) {
       bgPath.lineTo(x, getWaveY(x, waveOffset));
     }
@@ -280,7 +316,6 @@ class VoyagerPainter extends CustomPainter {
     Path fgPath = Path();
     if (fgEndX > waveStartX) {
       fgPath.moveTo(waveStartX, getWaveY(waveStartX, waveOffset));
-      // FIXED: Added {} to loop
       for (double x = waveStartX + 5; x < fgEndX; x += 5) {
         fgPath.lineTo(x, getWaveY(x, waveOffset));
       }
@@ -319,7 +354,6 @@ class VoyagerPainter extends CustomPainter {
   void _drawPolygon(Canvas canvas, List<Offset> points, Color color) {
     if (points.isEmpty) return;
     final path = Path()..moveTo(points[0].dx, points[0].dy);
-    // FIXED: Added {} to loop
     for (int i = 1; i < points.length; i++) {
       path.lineTo(points[i].dx, points[i].dy);
     }
