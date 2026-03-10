@@ -10,6 +10,7 @@ import '../operations_ui/standalone_operation_popup.dart';
 import 'providers.dart';
 import 'file_dialog_debug.dart';
 import 'archive_browser_debug.dart';
+import 'file_action_handler_debug.dart'; // FIXED: Added missing import
 
 class FileBottomSheetsDebug {
 
@@ -196,7 +197,6 @@ class FileBottomSheetsDebug {
                       final ext  = result['format']!;
                       final dest = p.join(p.dirname(filePath), '${result['name']}.$ext');
                       if (!context.mounted) return;
-                      // --- NEW POPUP OVERLAY SYSTEM ---
                       StandaloneOperationPopup.show(
                         context: context, title: 'Compressing', destination: dest,
                         action: (onProgress) => ArchiveService.compressEntities(targetPaths, dest, format: ext.replaceAll('.', ''), onProgress: onProgress),
