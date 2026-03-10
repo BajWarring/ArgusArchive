@@ -1,43 +1,32 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import '../../services/notifications/notification_service.dart';
 import 'operation_popup_card.dart';
 
 class StandaloneOperationPopup extends StatefulWidget {
   final String title;
   final String destination;
-  final Future<void> Function(void Function(double progress, String currentFile)) action;
+  final Future<bool> Function(Function(double, String) onProgress, ValueNotifier<bool> cancelToken) action;
   final VoidCallback onComplete;
+  final String operationId;
 
   const StandaloneOperationPopup({
-    super.key,
-    required this.title,
-    required this.destination,
-    required this.action,
-    required this.onComplete,
+    super.key, required this.title, required this.destination, required this.action, required this.onComplete, required this.operationId,
   });
 
   static Future<void> show({
-    required BuildContext context,
-    required String title,
-    required String destination,
-    required Future<void> Function(void Function(double progress, String currentFile)) action,
+    required BuildContext context, required String title, required String destination,
+    required Future<bool> Function(Function(double, String) onProgress, ValueNotifier<bool> cancelToken) action,
     required VoidCallback onComplete,
   }) {
     return showDialog(
-      context: context,
-      barrierColor: Colors.black45,
-      barrierDismissible: false,
+      context: context, barrierColor: Colors.black45, barrierDismissible: false,
       builder: (context) => Align(
         alignment: Alignment.bottomRight,
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Material(
-            color: Colors.transparent,
-            child: StandaloneOperationPopup(
-              title: title, destination: destination, action: action, onComplete: onComplete,
-            ),
-          ),
-        ),
+        child: Padding(padding: const EdgeInsets.all(24.0), child: Material(color: Colors.transparent, child: StandaloneOperationPopup(
+          title: title, destination: destination, action: action, onComplete: onComplete, operationId: DateTime.now().millisecondsSinceEpoch.toString(),
+        ))),
       ),
     );
   }
@@ -46,69 +35,124 @@ class StandaloneOperationPopup extends StatefulWidget {
   State<StandaloneOperationPopup> createState() => _StandaloneOperationPopupState();
 }
 
-class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> {
+class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> with WidgetsBindingObserver {
   double _progress = 0.0;
   String _currentFile = 'Starting...';
   bool _isCanceled = false;
   bool _isComplete = false;
+  bool _isFailed = false;
+  bool _isHidden = false;
+  bool _isBackground = false;
+  
+  final ValueNotifier<bool> _cancelToken = ValueNotifier<bool>(false);
+  StreamSubscription? _notifSub;
+
+  int get _notifId => widget.operationId.hashCode;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Listen for cancel taps from the Notification
+    _notifSub = NotificationService.actionStream.listen((payload) {
+      if (payload == widget.operationId) _handleCancel();
+    });
+
     _runAction();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _notifSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isBackground = (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.hidden);
+    if (!_isBackground && _isHidden && !_isComplete && !_isCanceled) {
+      NotificationService.cancelNotification(_notifId);
+    }
+  }
+
+  void _updateNotification() {
+    if ((_isHidden || _isBackground) && !_isComplete && !_isCanceled && !_isFailed) {
+      NotificationService.showProgressNotification(
+        id: _notifId,
+        title: widget.title,
+        body: _currentFile,
+        progress: (_progress * 100).toInt(),
+        payload: widget.operationId,
+      );
+    }
+  }
+
   Future<void> _runAction() async {
-    await widget.action((progress, currentFile) {
+    final success = await widget.action((progress, currentFile) {
       if (mounted && !_isCanceled) {
-        setState(() {
-          _progress = progress;
-          _currentFile = currentFile;
-        });
+        setState(() { _progress = progress; _currentFile = currentFile; });
+        _updateNotification();
       }
-    });
+    }, _cancelToken);
 
     if (mounted && !_isCanceled) {
       setState(() {
-        _isComplete = true;
-        _progress = 1.0;
+        _isComplete = success;
+        _isFailed = !success;
+        if (success) _progress = 1.0;
       });
-      widget.onComplete();
       
-      // FIXED: Capture the navigator before the async delay
-      final nav = Navigator.of(context);
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          nav.pop();
+      NotificationService.cancelNotification(_notifId);
+      NotificationService.showCompletionNotification(
+        id: _notifId,
+        title: success ? '${widget.title} Complete' : '${widget.title} Failed',
+        body: success ? 'Files processed successfully' : 'Operation encountered an error',
+      );
+
+      if (success) {
+        widget.onComplete();
+        if (!_isHidden) {
+          final nav = Navigator.of(context);
+          Future.delayed(const Duration(milliseconds: 500), () { if (mounted) nav.pop(); });
         }
-      });
+      }
+    }
+  }
+
+  void _handleCancel() {
+    _cancelToken.value = true;
+    NotificationService.cancelNotification(_notifId);
+    NotificationService.showCompletionNotification(id: _notifId, title: '${widget.title} Canceled', body: 'Operation aborted by user');
+    if (mounted) {
+      setState(() { _isCanceled = true; _isFailed = false; });
+      if (!_isHidden) {
+        final nav = Navigator.of(context);
+        Future.delayed(const Duration(seconds: 1), () { if (mounted) nav.pop(); });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return OperationPopupCard(
-      title: _isCanceled ? "Canceled" : widget.title,
+      title: _isCanceled ? "Canceled" : (_isFailed ? "Failed" : widget.title),
       destination: "To: ${p.basename(widget.destination)}",
       currentFile: _currentFile,
       progress: _progress,
       currentItems: (_progress * 100).toInt(),
       totalItems: 100,
       speedText: "${(_progress * 100).toStringAsFixed(1)}%",
-      isAnimating: !_isComplete && !_isCanceled,
+      isAnimating: !_isComplete && !_isCanceled && !_isFailed,
       isCanceled: _isCanceled,
-      onHide: () => Navigator.of(context).pop(),
-      onCancel: () {
-        setState(() => _isCanceled = true);
-        
-        // FIXED: Capture the navigator before the async delay
-        final nav = Navigator.of(context);
-        Future.delayed(const Duration(seconds: 1), () { 
-          if (mounted) {
-            nav.pop(); 
-          }
-        });
+      isFailed: _isFailed,
+      onHide: () {
+        setState(() => _isHidden = true);
+        _updateNotification();
+        Navigator.of(context).pop(); // Pops UI but future keeps running
       },
+      onCancel: _handleCancel,
     );
   }
 }
