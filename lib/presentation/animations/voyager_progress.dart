@@ -10,16 +10,19 @@ class PulsingDots extends StatefulWidget {
 
 class _PulsingDotsState extends State<PulsingDots> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat();
   }
+  
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
+  
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -52,14 +55,19 @@ class _VoyagerProgressState extends State<VoyagerProgress> with SingleTickerProv
   void initState() {
     super.initState();
     _ticker = createTicker(_onTick);
-    if (widget.isAnimating) _ticker.start();
+    if (widget.isAnimating) {
+      _ticker.start();
+    }
   }
 
   @override
   void didUpdateWidget(VoyagerProgress oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isAnimating && !_ticker.isTicking) _ticker.start();
-    else if (!widget.isAnimating && _ticker.isTicking) _ticker.stop();
+    if (widget.isAnimating && !_ticker.isTicking) {
+      _ticker.start();
+    } else if (!widget.isAnimating && _ticker.isTicking) {
+      _ticker.stop();
+    }
   }
 
   void _onTick(Duration elapsed) {
@@ -100,7 +108,9 @@ class VoyagerPainter extends CustomPainter {
 
     Paint bgPaint = Paint()..color = const Color(0xFFE2E8F0)..style = PaintingStyle.stroke..strokeWidth = 6.0..strokeCap = StrokeCap.round;
     Path bgPath = Path()..moveTo(waveStartX, getWaveY(waveStartX, waveOffset));
-    for (double x = waveStartX + 5; x <= waveEndX; x += 5) { bgPath.lineTo(x, getWaveY(x, waveOffset)); }
+    for (double x = waveStartX + 5; x <= waveEndX; x += 5) { 
+      bgPath.lineTo(x, getWaveY(x, waveOffset)); 
+    }
     bgPath.lineTo(waveEndX, getWaveY(waveEndX, waveOffset));
     canvas.drawPath(bgPath, bgPaint);
 
@@ -109,7 +119,9 @@ class VoyagerPainter extends CustomPainter {
     Path fgPath = Path();
     if (fgEndX > waveStartX) {
       fgPath.moveTo(waveStartX, getWaveY(waveStartX, waveOffset));
-      for (double x = waveStartX + 5; x < fgEndX; x += 5) { fgPath.lineTo(x, getWaveY(x, waveOffset)); }
+      for (double x = waveStartX + 5; x < fgEndX; x += 5) { 
+        fgPath.lineTo(x, getWaveY(x, waveOffset)); 
+      }
       fgPath.lineTo(fgEndX, getWaveY(fgEndX, waveOffset));
       canvas.drawPath(fgPath, fgPaint);
     }
@@ -143,12 +155,17 @@ class VoyagerPainter extends CustomPainter {
   }
 
   void _drawPolygon(Canvas canvas, List<Offset> points, Color color) {
-    if (points.isEmpty) return;
+    if (points.isEmpty) {
+      return;
+    }
     final path = Path()..moveTo(points[0].dx, points[0].dy);
-    for (int i = 1; i < points.length; i++) { path.lineTo(points[i].dx, points[i].dy); }
+    for (int i = 1; i < points.length; i++) { 
+      path.lineTo(points[i].dx, points[i].dy); 
+    }
     path.close();
     canvas.drawPath(path, Paint()..color = color..style = PaintingStyle.fill);
   }
+  
   @override
   bool shouldRepaint(covariant VoyagerPainter oldDelegate) => oldDelegate.progress != progress || oldDelegate.waveOffset != waveOffset;
 }
@@ -168,6 +185,7 @@ class StaticBarPainter extends CustomPainter {
     canvas.drawLine(const Offset(50, 100), Offset(50 + (700 * progress), 100), fg);
     canvas.restore();
   }
+  
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
