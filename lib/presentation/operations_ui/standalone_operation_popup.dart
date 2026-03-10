@@ -75,7 +75,10 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> {
       });
       widget.onComplete();
       Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) Navigator.of(context).pop();
+        // FIXED: Explicitly use context.mounted within closure to avoid async gap
+        if (context.mounted) {
+          Navigator.of(context).pop();
+        }
       });
     }
   }
@@ -95,7 +98,12 @@ class _StandaloneOperationPopupState extends State<StandaloneOperationPopup> {
       onHide: () => Navigator.of(context).pop(),
       onCancel: () {
         setState(() => _isCanceled = true);
-        Future.delayed(const Duration(seconds: 1), () { if (mounted) Navigator.of(context).pop(); });
+        Future.delayed(const Duration(seconds: 1), () { 
+          // FIXED: Async gap check
+          if (context.mounted) {
+            Navigator.of(context).pop(); 
+          }
+        });
       },
     );
   }
