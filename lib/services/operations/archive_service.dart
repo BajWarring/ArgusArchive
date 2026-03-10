@@ -36,6 +36,24 @@ class ArchiveInfo {
 class ArchiveService {
   
   // ===========================================================================
+  // HELPERS
+  // ===========================================================================
+  static bool isArchiveFile(String path) {
+    final ext = p.extension(path).toLowerCase();
+    return ['.zip', '.rar', '.7z', '.tar', '.gz'].contains(ext);
+  }
+
+  static String _getRelativePath(List<String> roots, String fullPath) {
+    for (String root in roots) {
+      if (fullPath.startsWith(root)) {
+        final rootDir = p.dirname(root);
+        return fullPath.substring(rootDir.length + 1);
+      }
+    }
+    return p.basename(fullPath);
+  }
+
+  // ===========================================================================
   // BATCH COMPRESSION (With Yields & Cancellation)
   // ===========================================================================
   static Future<bool> compressEntities(
@@ -204,7 +222,6 @@ class ArchiveService {
           
           int slashIndex = relative.indexOf('/');
           
-          // Direct child file or direct subfolder
           if (slashIndex == -1 || (slashIndex == relative.length - 1)) {
             results.add(ArchiveEntryInfo(
               name: relative.replaceAll('/', ''),
@@ -212,24 +229,18 @@ class ArchiveService {
               size: file.size,
               isDirectory: !file.isFile || file.name.endsWith('/'),
             ));
-          } 
-          // Nested file inside a subfolder (show the subfolder)
-          else {
+          } else {
             String dirName = relative.substring(0, slashIndex);
             if (!addedDirs.contains(dirName)) {
               addedDirs.add(dirName);
               results.add(ArchiveEntryInfo(
-                name: dirName,
-                fullPath: '$prefix$dirName',
-                size: 0,
-                isDirectory: true,
+                name: dirName, fullPath: '$prefix$dirName', size: 0, isDirectory: true,
               ));
             }
           }
         }
       }
       
-      // Sort directories first, then alphabetical
       results.sort((a, b) {
         if (a.isDirectory && !b.isDirectory) return -1;
         if (!a.isDirectory && b.isDirectory) return 1;
@@ -277,32 +288,10 @@ class ArchiveService {
 
       return ArchiveInfo(
         format: p.extension(archivePath).toUpperCase().replaceAll('.', ''),
-        fileCount: fileCount,
-        dirCount: dirCount,
-        totalUncompressedSize: totalUncompressedSize,
-        compressedSize: compressedSize,
+        fileCount: fileCount, dirCount: dirCount, totalUncompressedSize: totalUncompressedSize, compressedSize: compressedSize,
       );
     } catch (e) {
-      return ArchiveInfo(
-        format: 'UNKNOWN',
-        fileCount: 0,
-        dirCount: 0,
-        totalUncompressedSize: 0,
-        compressedSize: 0,
-      );
+      return ArchiveInfo(format: 'UNKNOWN', fileCount: 0, dirCount: 0, totalUncompressedSize: 0, compressedSize: 0);
     }
-  }
-
-  // ===========================================================================
-  // HELPERS
-  // ===========================================================================
-  static String _getRelativePath(List<String> roots, String fullPath) {
-    for (String root in roots) {
-      if (fullPath.startsWith(root)) {
-        final rootDir = p.dirname(root);
-        return fullPath.substring(rootDir.length + 1);
-      }
-    }
-    return p.basename(fullPath);
   }
 }
