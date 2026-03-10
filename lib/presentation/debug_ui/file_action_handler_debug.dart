@@ -11,9 +11,10 @@ import '../../services/operations/file_operations_service.dart';
 import '../../services/operations/archive_service.dart';
 import '../../services/sub_app/shortcut_service.dart';
 
+import '../operations_ui/transfer_queue_popup.dart';
+import '../operations_ui/standalone_operation_popup.dart';
 import 'providers.dart';
 import 'header_icons_debug.dart';
-import 'operation_progress_dialog_debug.dart';
 import 'file_dialog_debug.dart';
 
 class FileActionHandlerDebug {
@@ -44,10 +45,18 @@ class FileActionHandlerDebug {
         final ext = result['format']!;
         final dest = p.join(p.dirname(paths.first), '${result['name']}.$ext');
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compressing...')));
-        await ArchiveService.compressEntities(paths, dest, format: ext);
-        ref.read(selectedFilesProvider.notifier).state = {};
-        ref.invalidate(directoryContentsProvider);
+        
+        // --- NEW POPUP SYSTEM FOR COMPRESSION ---
+        StandaloneOperationPopup.show(
+          context: context,
+          title: 'Compressing',
+          destination: dest,
+          action: (onProgress) => ArchiveService.compressEntities(paths, dest, format: ext.replaceAll('.', ''), onProgress: onProgress),
+          onComplete: () {
+            ref.read(selectedFilesProvider.notifier).state = {};
+            ref.invalidate(directoryContentsProvider);
+          },
+        );
       }
     } else if (action == 'share') {
       final xFiles = paths.map((path) => XFile(path)).toList();
@@ -61,7 +70,6 @@ class FileActionHandlerDebug {
 
   static void handleNormalMenu(BuildContext context, WidgetRef ref, String value, String currentPath) async {
     final sortMap = {'sort_name': FileSortType.name, 'sort_size': FileSortType.size, 'sort_date': FileSortType.date, 'sort_type': FileSortType.type};
-
     if (sortMap.containsKey(value)) {
       ref.read(fileSortProvider.notifier).state = sortMap[value]!;
     } else if (value == 'order_asc') {
@@ -77,9 +85,7 @@ class FileActionHandlerDebug {
       if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indexing started!'))); }
     } else if (value == 'shortcut_video') {
       final success = await ShortcutService.createVideoPlayerShortcut();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Shortcut requested!' : 'Failed to add shortcut.')));
-      }
+      if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Shortcut requested!' : 'Failed to add shortcut.'))); }
     } else if (value == 'trash') {
       FileDialogsDebug.showTrashDialog(context, ref);
     } else if (value == 'new_folder' || value == 'new_file') {
@@ -110,47 +116,56 @@ class FileActionHandlerDebug {
       final tempExtractDir = p.join(destDir, '.temp_extract_${DateTime.now().millisecondsSinceEpoch}');
       await Directory(tempExtractDir).create();
 
-      bool success = await ArchiveService.extractZip(zipPath, tempExtractDir);
+      if (!context.mounted) return;
 
-      if (success && context.mounted) {
-        final allExtractedFiles = Directory(tempExtractDir).listSync(recursive: true).whereType<File>().toList();
-        bool applyToAll = false;
-        String? bulkAction;
+      // --- NEW POPUP SYSTEM FOR EXTRACTION ---
+      StandaloneOperationPopup.show(
+        context: context,
+        title: 'Extracting',
+        destination: destDir,
+        action: (onProgress) async {
+          bool success = await ArchiveService.extractZip(zipPath, tempExtractDir, onProgress: onProgress);
+          if (success) {
+            final allExtractedFiles = Directory(tempExtractDir).listSync(recursive: true).whereType<File>().toList();
+            bool applyToAll = false;
+            String? bulkAction;
 
-        for (var tempFile in allExtractedFiles) {
-          final relativePath = p.relative(tempFile.path, from: tempExtractDir);
-          String finalPath = p.join(destDir, relativePath);
-          await Directory(p.dirname(finalPath)).create(recursive: true);
+            for (var tempFile in allExtractedFiles) {
+              final relativePath = p.relative(tempFile.path, from: tempExtractDir);
+              String finalPath = p.join(destDir, relativePath);
+              await Directory(p.dirname(finalPath)).create(recursive: true);
 
-          if (File(finalPath).existsSync()) {
-            String action;
-            if (applyToAll && bulkAction != null) {
-              action = bulkAction;
-            } else {
-              if (!context.mounted) return;
-              final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, tempFile.path);
-              if (result == null) break;
-              action = result['action'];
-              if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
+              if (File(finalPath).existsSync()) {
+                String action;
+                if (applyToAll && bulkAction != null) {
+                  action = bulkAction;
+                } else {
+                  // Dialog requires valid context, safe fallback for async blocks
+                  final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, tempFile.path);
+                  if (result == null) break;
+                  action = result['action'];
+                  if (result['applyToAll'] == true) { applyToAll = true; bulkAction = action; }
+                }
+                if (action == 'skip') { continue; }
+                else if (action == 'replace') { await File(finalPath).delete(); }
+                else if (action == 'rename') { finalPath = FileOperationsService.getRenameUniquePath(p.dirname(finalPath), p.basename(finalPath)); }
+              }
+              await tempFile.rename(finalPath);
             }
-            if (action == 'skip') { continue; }
-            else if (action == 'replace') { await File(finalPath).delete(); }
-            else if (action == 'rename') { finalPath = FileOperationsService.getRenameUniquePath(p.dirname(finalPath), p.basename(finalPath)); }
           }
-          await tempFile.rename(finalPath);
+          if (Directory(tempExtractDir).existsSync()) { await Directory(tempExtractDir).delete(recursive: true); }
+        },
+        onComplete: () {
+          ref.read(clipboardProvider.notifier).state = ClipboardState();
+          ref.invalidate(directoryContentsProvider);
         }
-      }
-
-      if (Directory(tempExtractDir).existsSync()) { await Directory(tempExtractDir).delete(recursive: true); }
-      ref.read(clipboardProvider.notifier).state = ClipboardState();
-      ref.invalidate(directoryContentsProvider);
+      );
       return;
     }
 
     // COPY/MOVE
     bool applyToAll = false;
     String? bulkAction;
-
     for (int i = 0; i < clipboard.paths.length; i++) {
       String sourcePath = clipboard.paths[i];
       String originalName = p.basename(sourcePath);
@@ -190,7 +205,8 @@ class FileActionHandlerDebug {
 
     if (queuedTaskIds.isNotEmpty) {
       if (!context.mounted) return;
-      OperationProgressDialogDebug.show(context, queuedTaskIds);
+      // --- TRIGGER THE TRANSFER QUEUE ANIMATED POPUP ---
+      TransferQueuePopup.show(context, queuedTaskIds);
     }
 
     ref.read(clipboardProvider.notifier).state = ClipboardState();
