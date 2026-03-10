@@ -45,7 +45,6 @@ class OperationPopupCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row 1: Header (Title & Metrics)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -78,7 +77,6 @@ class OperationPopupCard extends StatelessWidget {
           
           const SizedBox(height: 12),
 
-          // Row 2: Voyager Progress Bar 
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
@@ -88,14 +86,13 @@ class OperationPopupCard extends StatelessWidget {
             ),
             padding: const EdgeInsets.all(8),
             child: AspectRatio(
-              aspectRatio: 800 / 210, // Exact SVG viewBox ratio
+              aspectRatio: 800 / 210, 
               child: VoyagerProgress(progress: progress, isAnimating: isAnimating),
             ),
           ),
 
           const SizedBox(height: 12),
 
-          // Row 3: Active Details & Actions
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -170,7 +167,6 @@ class OperationPopupCard extends StatelessWidget {
   }
 }
 
-// --- ANIMATED CSS-STYLE STATUS DOTS ---
 class PulsingDots extends StatefulWidget {
   const PulsingDots({super.key});
   @override
@@ -205,7 +201,6 @@ class _PulsingDotsState extends State<PulsingDots> with SingleTickerProviderStat
   }
 }
 
-// --- VOYAGER PROGRESS WRAPPER ---
 class VoyagerProgress extends StatefulWidget {
   final double progress;
   final bool isAnimating;
@@ -251,7 +246,6 @@ class _VoyagerProgressState extends State<VoyagerProgress> with SingleTickerProv
   }
 }
 
-// --- VOYAGER SVG PHYSICS PAINTER ---
 class VoyagerPainter extends CustomPainter {
   final double progress;
   final double waveOffset;
@@ -274,7 +268,10 @@ class VoyagerPainter extends CustomPainter {
 
     Paint bgPaint = Paint()..color = const Color(0xFFE2E8F0)..style = PaintingStyle.stroke..strokeWidth = 6.0..strokeCap = StrokeCap.round;
     Path bgPath = Path()..moveTo(waveStartX, getWaveY(waveStartX, waveOffset));
-    for (double x = waveStartX + 5; x <= waveEndX; x += 5) bgPath.lineTo(x, getWaveY(x, waveOffset));
+    // FIXED: Added {} to loop
+    for (double x = waveStartX + 5; x <= waveEndX; x += 5) {
+      bgPath.lineTo(x, getWaveY(x, waveOffset));
+    }
     bgPath.lineTo(waveEndX, getWaveY(waveEndX, waveOffset));
     canvas.drawPath(bgPath, bgPaint);
 
@@ -283,7 +280,10 @@ class VoyagerPainter extends CustomPainter {
     Path fgPath = Path();
     if (fgEndX > waveStartX) {
       fgPath.moveTo(waveStartX, getWaveY(waveStartX, waveOffset));
-      for (double x = waveStartX + 5; x < fgEndX; x += 5) fgPath.lineTo(x, getWaveY(x, waveOffset));
+      // FIXED: Added {} to loop
+      for (double x = waveStartX + 5; x < fgEndX; x += 5) {
+        fgPath.lineTo(x, getWaveY(x, waveOffset));
+      }
       fgPath.lineTo(fgEndX, getWaveY(fgEndX, waveOffset));
       canvas.drawPath(fgPath, fgPaint);
     }
@@ -319,7 +319,10 @@ class VoyagerPainter extends CustomPainter {
   void _drawPolygon(Canvas canvas, List<Offset> points, Color color) {
     if (points.isEmpty) return;
     final path = Path()..moveTo(points[0].dx, points[0].dy);
-    for (int i = 1; i < points.length; i++) path.lineTo(points[i].dx, points[i].dy);
+    // FIXED: Added {} to loop
+    for (int i = 1; i < points.length; i++) {
+      path.lineTo(points[i].dx, points[i].dy);
+    }
     path.close();
     canvas.drawPath(path, Paint()..color = color..style = PaintingStyle.fill);
   }
