@@ -93,17 +93,19 @@ class _ArchiveBrowserScreenState extends State<ArchiveBrowserScreen> {
     if (confirmed != true || !mounted) return;
 
     int done = 0;
-    // --- NEW POPUP UI SYSTEM ---
     StandaloneOperationPopup.show(
       context: context,
       title: 'Extracting',
       destination: controller.text,
-      action: (onProgress) async {
+      // FIXED: Added cancelToken parameter and return type
+      action: (onProgress, cancelToken) async {
         for (final entryPath in entryPaths) {
+          if (cancelToken.value) return false;
           await ArchiveService.extractSingleEntry(widget.archivePath, entryPath, controller.text);
           done++;
           onProgress(done / entryPaths.length, p.basename(entryPath));
         }
+        return true;
       },
       onComplete: () {
         if (mounted) {
