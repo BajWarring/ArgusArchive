@@ -1,168 +1,183 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 class ArchiveEntryInfo {
-  final String name;
-  final String fullPath;
-  final int size;
-  final bool isDirectory;
-
-  ArchiveEntryInfo({
-    required this.name,
-    required this.fullPath,
-    required this.size,
-    required this.isDirectory,
-  });
+  final String name; final String fullPath; final int size; final bool isDirectory;
+  ArchiveEntryInfo({required this.name, required this.fullPath, required this.size, required this.isDirectory});
 }
 
 class ArchiveInfo {
-  final String format;
-  final int fileCount;
-  final int dirCount;
-  final int totalUncompressedSize;
-  final int compressedSize;
-
-  ArchiveInfo({
-    required this.format,
-    required this.fileCount,
-    required this.dirCount,
-    required this.totalUncompressedSize,
-    required this.compressedSize,
-  });
+  final String format; final int fileCount; final int dirCount; final int totalUncompressedSize; final int compressedSize;
+  ArchiveInfo({required this.format, required this.fileCount, required this.dirCount, required this.totalUncompressedSize, required this.compressedSize});
 }
 
 class ArchiveService {
   
-  // ===========================================================================
-  // HELPERS
-  // ===========================================================================
-  
-  // FIXED: Changed to Future<bool> and added 'async' to satisfy the await in file_browser
   static Future<bool> isArchiveFile(String path) async {
-    final ext = p.extension(path).toLowerCase();
-    return ['.zip', '.rar', '.7z', '.tar', '.gz'].contains(ext);
+    return ['.zip', '.rar', '.7z', '.tar', '.gz'].contains(p.extension(path).toLowerCase());
   }
 
   static String _getRelativePath(List<String> roots, String fullPath) {
     for (String root in roots) {
-      if (fullPath.startsWith(root)) {
-        final rootDir = p.dirname(root);
-        return fullPath.substring(rootDir.length + 1);
-      }
+      if (fullPath.startsWith(root)) return fullPath.substring(p.dirname(root).length + 1);
     }
     return p.basename(fullPath);
   }
 
   // ===========================================================================
-  // BATCH COMPRESSION (With Yields & Cancellation)
+  // ISOLATE-BASED BATCH COMPRESSION (Prevents UI Freeze and ANR Crashes)
   // ===========================================================================
-  static Future<bool> compressEntities(
-    List<String> paths, 
-    String dest, 
-    {required String format, required Function(double, String) onProgress, required ValueNotifier<bool> cancelToken}
-  ) async {
+  static Future<bool> compressEntities(List<String> paths, String dest, {required String format, required Function(double, String) onProgress, required ValueNotifier<bool> cancelToken}) async {
+    final receivePort = ReceivePort();
+    final isolate = await Isolate.spawn(_compressIsolate, {'paths': paths, 'dest': dest, 'sendPort': receivePort.sendPort});
+
+    bool success = false;
+
+    void cancelListener() {
+      if (cancelToken.value) {
+        isolate.kill(priority: Isolate.immediate);
+        if (File(dest).existsSync()) File(dest).deleteSync();
+        receivePort.close();
+      }
+    }
+    cancelToken.addListener(cancelListener);
+
+    await for (final message in receivePort) {
+      if (message is Map) {
+        if (message['type'] == 'progress') {
+          onProgress(message['progress'], message['file']);
+        } else if (message['type'] == 'done') {
+          success = message['success'];
+          receivePort.close();
+        }
+      }
+    }
+    cancelToken.removeListener(cancelListener);
+    return success;
+  }
+
+  static void _compressIsolate(Map<String, dynamic> args) {
+    final paths = args['paths'] as List<String>;
+    final dest = args['dest'] as String;
+    final sendPort = args['sendPort'] as SendPort;
+
     try {
       int totalBytes = 0;
       List<File> filesToZip = [];
-      
-      onProgress(0.0, "Calculating size...");
-      await Future.delayed(const Duration(milliseconds: 100)); // Yield thread
+      sendPort.send({'type': 'progress', 'progress': 0.0, 'file': 'Scanning files...'});
 
       for (String path in paths) {
-        if (cancelToken.value) return false;
-        if (await FileSystemEntity.isDirectory(path)) {
-          await for (var entity in Directory(path).list(recursive: true, followLinks: false)) {
+        final dir = Directory(path);
+        if (dir.existsSync()) {
+          for (var entity in dir.listSync(recursive: true, followLinks: false)) {
             if (entity is File) {
               filesToZip.add(entity);
-              totalBytes += await entity.length();
+              totalBytes += entity.lengthSync();
             }
           }
         } else {
           final file = File(path);
-          filesToZip.add(file);
-          totalBytes += await file.length();
+          if (file.existsSync()) {
+            filesToZip.add(file);
+            totalBytes += file.lengthSync();
+          }
         }
       }
 
-      if (totalBytes == 0) totalBytes = 1; 
-      
+      if (totalBytes == 0) totalBytes = 1;
       int processedBytes = 0;
+      
       final encoder = ZipFileEncoder();
       encoder.create(dest);
 
       for (var file in filesToZip) {
-        if (cancelToken.value) {
-          encoder.close();
-          if (File(dest).existsSync()) await File(dest).delete();
-          return false;
-        }
-        
         final relativePath = _getRelativePath(paths, file.path);
-        onProgress(processedBytes / totalBytes, p.basename(file.path));
-        
-        await Future.delayed(Duration.zero); 
-        
+        sendPort.send({'type': 'progress', 'progress': processedBytes / totalBytes, 'file': p.basename(file.path)});
         encoder.addFile(file, relativePath);
-        processedBytes += await file.length();
+        processedBytes += file.lengthSync();
       }
       
       encoder.close();
-      return true;
+      sendPort.send({'type': 'done', 'success': true});
     } catch (e) {
-      return false;
+      sendPort.send({'type': 'done', 'success': false});
     }
   }
 
   // ===========================================================================
-  // FULL EXTRACTION (With Yields & Cancellation)
+  // ISOLATE-BASED FULL EXTRACTION (Uses Streams to Prevent RAM OOM Crashes)
   // ===========================================================================
-  static Future<bool> extractZip(
-    String zipPath, 
-    String destDir, 
-    {required Function(double, String) onProgress, required ValueNotifier<bool> cancelToken}
-  ) async {
+  static Future<bool> extractZip(String zipPath, String destDir, {required Function(double, String) onProgress, required ValueNotifier<bool> cancelToken}) async {
+    final receivePort = ReceivePort();
+    final isolate = await Isolate.spawn(_extractIsolate, {'zipPath': zipPath, 'destDir': destDir, 'sendPort': receivePort.sendPort});
+
+    bool success = false;
+
+    void cancelListener() {
+      if (cancelToken.value) {
+        isolate.kill(priority: Isolate.immediate);
+        receivePort.close();
+      }
+    }
+    cancelToken.addListener(cancelListener);
+
+    await for (final message in receivePort) {
+      if (message is Map) {
+        if (message['type'] == 'progress') {
+          onProgress(message['progress'], message['file']);
+        } else if (message['type'] == 'done') {
+          success = message['success'];
+          receivePort.close();
+        }
+      }
+    }
+    cancelToken.removeListener(cancelListener);
+    return success;
+  }
+
+  static void _extractIsolate(Map<String, dynamic> args) {
+    final zipPath = args['zipPath'] as String;
+    final destDir = args['destDir'] as String;
+    final sendPort = args['sendPort'] as SendPort;
+
     try {
-      final file = File(zipPath);
-      final bytes = await file.readAsBytes();
-      final archive = ZipDecoder().decodeBytes(bytes);
+      // Decode Buffer using Stream prevents loading massive Zips into memory
+      final inputStream = InputFileStream(zipPath);
+      final archive = ZipDecoder().decodeBuffer(inputStream);
       
       int totalFiles = archive.length;
       int processed = 0;
 
       for (final archiveFile in archive) {
-        if (cancelToken.value) return false;
-        
         final filename = archiveFile.name;
         if (archiveFile.isFile) {
-          final data = archiveFile.content as List<int>;
           final outFile = File(p.join(destDir, filename));
-          await outFile.create(recursive: true);
-          await outFile.writeAsBytes(data);
+          outFile.createSync(recursive: true);
+          final outStream = OutputFileStream(outFile.path);
+          archiveFile.writeContent(outStream);
+          outStream.close();
         } else {
-          await Directory(p.join(destDir, filename)).create(recursive: true);
+          Directory(p.join(destDir, filename)).createSync(recursive: true);
         }
-        
         processed++;
-        onProgress(processed / totalFiles, filename);
-        
-        if (processed % 5 == 0) await Future.delayed(Duration.zero); 
+        sendPort.send({'type': 'progress', 'progress': processed / totalFiles, 'file': filename});
       }
-      return true;
+      
+      inputStream.close();
+      sendPort.send({'type': 'done', 'success': true});
     } catch (e) {
-      return false;
+      sendPort.send({'type': 'done', 'success': false});
     }
   }
 
-  // ===========================================================================
-  // SINGLE ENTRY EXTRACTION (For Archive Browser)
-  // ===========================================================================
+  // --- Keep other methods like listArchiveEntries identical... ---
   static Future<bool> extractSingleEntry(String archivePath, String entryPath, String destDir) async {
     try {
       final bytes = await File(archivePath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      
       for (final file in archive) {
         if (file.name == entryPath || file.name == '$entryPath/') {
           final filename = p.basename(file.name);
@@ -178,90 +193,50 @@ class ArchiveService {
         }
       }
       return false;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
 
-  // ===========================================================================
-  // READ ENTRY INTO MEMORY (For Image/Text Previews)
-  // ===========================================================================
   static Future<List<int>?> readArchiveEntry(String archivePath, String entryPath) async {
     try {
       final bytes = await File(archivePath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      
       for (final file in archive) {
-        if (file.name == entryPath && file.isFile) {
-          return file.content as List<int>;
-        }
+        if (file.name == entryPath && file.isFile) return file.content as List<int>;
       }
       return null;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
 
-  // ===========================================================================
-  // LIST ENTRIES (For Archive Browser Navigation)
-  // ===========================================================================
   static Future<List<ArchiveEntryInfo>> listArchiveEntries(String archivePath, {String prefix = ''}) async {
     try {
       final bytes = await File(archivePath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      
       List<ArchiveEntryInfo> results = [];
       Set<String> addedDirs = {};
-
       for (var file in archive) {
         if (file.name.startsWith(prefix)) {
           String relative = file.name.substring(prefix.length);
           if (relative.isEmpty) continue;
-          
           int slashIndex = relative.indexOf('/');
-          
           if (slashIndex == -1 || (slashIndex == relative.length - 1)) {
-            results.add(ArchiveEntryInfo(
-              name: relative.replaceAll('/', ''),
-              fullPath: file.name.endsWith('/') ? file.name.substring(0, file.name.length - 1) : file.name,
-              size: file.size,
-              isDirectory: !file.isFile || file.name.endsWith('/'),
-            ));
+            results.add(ArchiveEntryInfo(name: relative.replaceAll('/', ''), fullPath: file.name.endsWith('/') ? file.name.substring(0, file.name.length - 1) : file.name, size: file.size, isDirectory: !file.isFile || file.name.endsWith('/')));
           } else {
             String dirName = relative.substring(0, slashIndex);
-            if (!addedDirs.contains(dirName)) {
-              addedDirs.add(dirName);
-              results.add(ArchiveEntryInfo(
-                name: dirName, fullPath: '$prefix$dirName', size: 0, isDirectory: true,
-              ));
-            }
+            if (!addedDirs.contains(dirName)) { addedDirs.add(dirName); results.add(ArchiveEntryInfo(name: dirName, fullPath: '$prefix$dirName', size: 0, isDirectory: true)); }
           }
         }
       }
-      
-      results.sort((a, b) {
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      });
-      
+      results.sort((a, b) { if (a.isDirectory && !b.isDirectory) return -1; if (!a.isDirectory && b.isDirectory) return 1; return a.name.toLowerCase().compareTo(b.name.toLowerCase()); });
       return results;
-    } catch (e) {
-      return [];
-    }
+    } catch (e) { return []; }
   }
 
-  // ===========================================================================
-  // METADATA & INTEGRITY CHECKS
-  // ===========================================================================
   static Future<bool> testArchiveIntegrity(String archivePath) async {
     try {
       final bytes = await File(archivePath).readAsBytes();
       ZipDecoder().decodeBytes(bytes, verify: true);
       return true;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
 
   static Future<ArchiveInfo> getArchiveInfo(String archivePath) async {
@@ -270,26 +245,11 @@ class ArchiveService {
       final compressedSize = await file.length();
       final bytes = await file.readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      
-      int fileCount = 0;
-      int dirCount = 0;
-      int totalUncompressedSize = 0;
-
+      int fileCount = 0; int dirCount = 0; int totalUncompressedSize = 0;
       for (var f in archive) {
-        if (f.isFile && !f.name.endsWith('/')) {
-          fileCount++;
-          totalUncompressedSize += f.size;
-        } else {
-          dirCount++;
-        }
+        if (f.isFile && !f.name.endsWith('/')) { fileCount++; totalUncompressedSize += f.size; } else { dirCount++; }
       }
-
-      return ArchiveInfo(
-        format: p.extension(archivePath).toUpperCase().replaceAll('.', ''),
-        fileCount: fileCount, dirCount: dirCount, totalUncompressedSize: totalUncompressedSize, compressedSize: compressedSize,
-      );
-    } catch (e) {
-      return ArchiveInfo(format: 'UNKNOWN', fileCount: 0, dirCount: 0, totalUncompressedSize: 0, compressedSize: 0);
-    }
+      return ArchiveInfo(format: p.extension(archivePath).toUpperCase().replaceAll('.', ''), fileCount: fileCount, dirCount: dirCount, totalUncompressedSize: totalUncompressedSize, compressedSize: compressedSize);
+    } catch (e) { return ArchiveInfo(format: 'UNKNOWN', fileCount: 0, dirCount: 0, totalUncompressedSize: 0, compressedSize: 0); }
   }
 }
