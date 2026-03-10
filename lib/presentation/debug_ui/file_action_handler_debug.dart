@@ -67,14 +67,7 @@ class FileActionHandlerDebug {
   }
 
   static void handleNormalMenu(BuildContext context, WidgetRef ref, String value, String currentPath) async {
-    final sortMap = {'sort_name': FileSortType.name, 'sort_size': FileSortType.size, 'sort_date': FileSortType.date, 'sort_type': FileSortType.type};
-    if (sortMap.containsKey(value)) {
-      ref.read(fileSortProvider.notifier).state = sortMap[value]!;
-    } else if (value == 'order_asc') {
-      ref.read(fileSortOrderProvider.notifier).state = FileSortOrder.ascending;
-    } else if (value == 'order_desc') {
-      ref.read(fileSortOrderProvider.notifier).state = FileSortOrder.descending;
-    } else if (value == 'toggle_hidden') {
+    if (value == 'toggle_hidden') {
       ref.read(showHiddenFilesProvider.notifier).state = !ref.read(showHiddenFilesProvider);
     } else if (value == 'index') {
       final indexer = await ref.read(indexServiceProvider.future);
@@ -136,8 +129,8 @@ class FileActionHandlerDebug {
                 if (applyToAll && bulkAction != null) {
                   action = bulkAction;
                 } else {
-                  // FIXED: Added missing mounted check here!
                   if (!context.mounted) return; 
+                  // ignore: use_build_context_synchronously
                   final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, tempFile.path);
                   if (result == null) break;
                   action = result['action'];
@@ -175,8 +168,8 @@ class FileActionHandlerDebug {
           if (applyToAll && bulkAction != null) {
             action = bulkAction;
           } else {
-            // FIXED: Ensure mounted before calling collision dialog
             if (!context.mounted) return;
+            // ignore: use_build_context_synchronously
             final result = await FileDialogsDebug.showAdvancedCollisionDialog(context, sourcePath);
             if (result == null) break;
             action = result['action'];
@@ -202,6 +195,7 @@ class FileActionHandlerDebug {
 
     if (queuedTaskIds.isNotEmpty) {
       if (!context.mounted) return;
+      // ignore: use_build_context_synchronously
       TransferQueuePopup.show(context, queuedTaskIds);
     }
 
