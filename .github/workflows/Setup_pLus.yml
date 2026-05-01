@@ -1,0 +1,84 @@
+name: 1. Setup Flutter App
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "App name shown on device"
+        required: true
+        default: "My App"
+
+      package_name:
+        description: "Android package name (example: com.example.app)"
+        required: true
+        default: "com.example.app"
+
+      pubspec_name:
+        description: "Project name for pubspec.yaml (example: example_app)"
+        required: true
+        default: "example_app"
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.19.0"
+          channel: stable
+
+      - name: Create Flutter Project
+        run: |
+          flutter create app
+
+      - name: Move Project To Root
+        run: |
+          shopt -s dotglob
+          mv app/* .
+          rm -rf app
+
+      - name: Apply User Configuration
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+          PUBSPEC_NAME="${{ github.event.inputs.pubspec_name }}"
+
+          OLD_PACKAGE="com.example.app"
+
+          # Update pubspec project name
+          sed -i "s/^name: .*/name: $PUBSPEC_NAME/" pubspec.yaml
+
+          # Update Android label
+          sed -i "s/android:label=\".*\"/android:label=\"$APP_NAME\"/" android/app/src/main/AndroidManifest.xml
+
+          # Update Android package
+          sed -i "s/package=\"com.example.app\"/package=\"$PACKAGE_NAME\"/" android/app/src/main/AndroidManifest.xml
+          sed -i "s/applicationId \"com.example.app\"/applicationId \"$PACKAGE_NAME\"/" android/app/build.gradle
+
+          # Update Kotlin package declaration
+          sed -i "s/package com.example.app/package $PACKAGE_NAME/" android/app/src/main/kotlin/com/example/app/MainActivity.kt
+
+          # Move Kotlin directory to match package
+          NEW_PATH=$(echo $PACKAGE_NAME | tr '.' '/')
+          mkdir -p android/app/src/main/kotlin/$NEW_PATH
+          mv android/app/src/main/kotlin/com/example/app/MainActivity.kt android/app/src/main/kotlin/$NEW_PATH/
+          rm -rf android/app/src/main/kotlin/com/example
+
+      - name: Remove Test Folder
+        run: rm -rf test
+
+      - name: Commit Setup
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add .
+          git commit -m "Initialize Flutter app (${{ github.event.inputs.package_name }})"
+          git push
