@@ -1,0 +1,40 @@
+name: Delete Selected Folders
+
+on:
+  workflow_dispatch:
+    inputs:
+      folders:
+        description: "Comma-separated folder names to delete from root"
+        required: true
+        default: "folder1,folder2"
+
+jobs:
+  delete-folders:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Delete selected folders
+        run: |
+          echo "Deleting folders: ${{ github.event.inputs.folders }}"
+
+          IFS=',' read -ra DIRS <<< "${{ github.event.inputs.folders }}"
+          
+          for dir in "${DIRS[@]}"; do
+            if [ -d "$dir" ]; then
+              echo "Deleting $dir"
+              rm -rf "$dir"
+            else
+              echo "Folder $dir not found, skipping"
+            fi
+          done
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Deleted selected folders: ${{ github.event.inputs.folders }}" || echo "No changes to commit"
+          git push
