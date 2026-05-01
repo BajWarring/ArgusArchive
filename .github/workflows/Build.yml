@@ -33,15 +33,15 @@ jobs:
       # Decode keystore from secrets
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
       # Create key.properties for Gradle signing
       - name: Create key.properties
         run: |
-          echo "storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}" > android/key.properties
-          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=argus-keystore.jks" >> android/key.properties
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=alle-keystore.jks" >> android/key.properties
 
       - name: Get Dependencies
         run: flutter pub get
@@ -56,5 +56,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Argus_
+          name: Alle_
           path: build/app/outputs/flutter-apk/app-release.apk
