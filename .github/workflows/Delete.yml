@@ -1,0 +1,43 @@
+name: Delete Selected Files and Folders
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Comma-separated files/folders to delete from root"
+        required: true
+        default: "android,ios,README.md"
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Delete selected items
+        run: |
+          echo "Deleting: ${{ github.event.inputs.targets }}"
+
+          IFS=',' read -ra ITEMS <<< "${{ github.event.inputs.targets }}"
+          
+          for item in "${ITEMS[@]}"; do
+            if [ -d "$item" ]; then
+              echo "Deleting folder: $item"
+              rm -rf "$item"
+            elif [ -f "$item" ]; then
+              echo "Deleting file: $item"
+              rm -f "$item"
+            else
+              echo "$item not found, skipping"
+            fi
+          done
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -m "Deleted selected items: ${{ github.event.inputs.targets }}" || echo "No changes"
+          git push
