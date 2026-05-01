@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:archive/archive_io.dart';
+import 'package:archive/archive.dart';
 
 class ArchiveService {
   /// Extract a ZIP file to [destinationDir]
