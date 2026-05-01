@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:io';
 
 class ThumbnailCache {
@@ -47,7 +46,7 @@ class ThumbnailCache {
     if (!await dir.exists()) return;
     final files = dir.listSync().whereType<File>().toList();
     int totalSize = files.fold(0, (sum, f) => sum + f.lengthSync());
-    final maxBytes = maxDiskSizeMB * 1024 * 1024;
+    const maxBytes = maxDiskSizeMB * 1024 * 1024;
     if (totalSize <= maxBytes) return;
     files.sort((a, b) => a.lastAccessedSync().compareTo(b.lastAccessedSync()));
     for (final file in files) {
