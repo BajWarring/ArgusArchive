@@ -1,33 +1,36 @@
-name: Delete Selected Folders
+name: Delete Selected Files and Folders
 
 on:
   workflow_dispatch:
     inputs:
-      folders:
-        description: "Comma-separated folder names to delete from root"
+      targets:
+        description: "Comma-separated files/folders to delete from root"
         required: true
-        default: "folder1,folder2"
+        default: "android,ios,README.md"
 
 jobs:
-  delete-folders:
+  delete:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Delete selected folders
+      - name: Delete selected items
         run: |
-          echo "Deleting folders: ${{ github.event.inputs.folders }}"
+          echo "Deleting: ${{ github.event.inputs.targets }}"
 
-          IFS=',' read -ra DIRS <<< "${{ github.event.inputs.folders }}"
+          IFS=',' read -ra ITEMS <<< "${{ github.event.inputs.targets }}"
           
-          for dir in "${DIRS[@]}"; do
-            if [ -d "$dir" ]; then
-              echo "Deleting $dir"
-              rm -rf "$dir"
+          for item in "${ITEMS[@]}"; do
+            if [ -d "$item" ]; then
+              echo "Deleting folder: $item"
+              rm -rf "$item"
+            elif [ -f "$item" ]; then
+              echo "Deleting file: $item"
+              rm -f "$item"
             else
-              echo "Folder $dir not found, skipping"
+              echo "$item not found, skipping"
             fi
           done
 
@@ -35,6 +38,6 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add .
-          git commit -m "Deleted selected folders: ${{ github.event.inputs.folders }}" || echo "No changes to commit"
+          git add -A
+          git commit -m "Deleted selected items: ${{ github.event.inputs.targets }}" || echo "No changes"
           git push
