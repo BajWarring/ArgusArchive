@@ -2,7 +2,7 @@ import 'dart:collection';
 import 'dart:io';
 
 class ThumbnailCache {
-  static final _memoryCache = LinkedHashMap<String, File>();
+  static final _memoryCache = <String, File>{};
   static const int maxMemoryItems = 100;
   static const int maxDiskSizeMB = 100;
   static String cacheDir = '/storage/emulated/0/.alle_cache';
