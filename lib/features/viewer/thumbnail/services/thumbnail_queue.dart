@@ -1,4 +1,4 @@
-import 'dart:collection';
+
 import 'package:collection/collection.dart';
 
 class ThumbnailTask {
@@ -44,15 +44,12 @@ class ThumbnailQueue {
 
   /// Remove queued tasks for items no longer near the viewport.
   static void refreshPriorities(bool Function(ThumbnailTask) shouldKeep) {
-    final updated = PriorityQueue<ThumbnailTask>(
-        (a, b) => b.priority.compareTo(a.priority));
-    for (final task in _queue) {
-      if (shouldKeep(task)) updated.add(task);
-    }
-    _queue
-      ..clear()
-      ..addAll(updated);
+  final kept = _queue.toList().where(shouldKeep).toList();
+  _queue.clear();
+  for (final task in kept) {
+    _queue.add(task);
   }
+}
 
   /// Called by PerfController to tune concurrency at runtime
   static void setConcurrency(int v) {
