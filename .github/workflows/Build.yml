@@ -20,7 +20,7 @@ jobs:
 
   # 🔍 Verify Java (debug safety)
       - name: Verify Java
-       run: java -version
+        run: java -version
 
   # 🧹 Clean ALL caches (critical for your error)
       - name: Clean Gradle & Flutter cache
@@ -31,8 +31,8 @@ jobs:
 
   # 📦 Setup Flutter
       - name: Setup Flutter
-       uses: subosito/flutter-action@v2
-       with:
+        uses: subosito/flutter-action@v2
+        with:
         flutter-version: '3.27.4'
         cache: true
 
