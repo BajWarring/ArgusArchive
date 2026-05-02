@@ -8,13 +8,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
       - name: Clean everything
         run: |
          flutter clean
          rm -rf ~/.gradle/caches
          rm -rf ~/.gradle/wrapper
+         
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
       - name: Setup Java
         uses: actions/setup-java@v4
