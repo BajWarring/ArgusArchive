@@ -17,6 +17,8 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
           cache: 'gradle'
+      - name: Force JAVA_HOME for Gradle
+        run: echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
 
       - name: Cache Flutter SDK
         id: cache-flutter
